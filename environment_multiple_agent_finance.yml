@@ -1,0 +1,11 @@
+name: multiple_agent_finance
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - swig
+  - ta-lib
+  - pip:
+      - -r requirements.txt

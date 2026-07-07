@@ -1,0 +1,13 @@
+[project]
+name = "multiple-agent-finance"
+version = "0.1.0"
+description = "LangGraph-based stock multi-agent analysis system."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,61 @@
+# Core runtime for the meeting-based LangGraph stock multi-agent system.
+langgraph>=1.0.2,<2.0.0
+langgraph-checkpoint-sqlite>=2.0.0
+langchain-core>=1.0.0,<2.0.0
+langchain-openai>=1.0.0
+langchain-community>=0.4.0
+openai>=2.0.0
+
+# Agent UX, configuration, and schemas.
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+typing-extensions>=4.14.0
+rich>=14.0.0
+typer>=0.21.0
+questionary>=2.1.0
+
+# Data analysis and finance data.
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+yfinance>=0.2.0
+stockstats>=0.6.5
+pandas-market-calendars>=4.3.0
+requests>=2.32.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+feedparser>=6.0.0
+
+# Visualization and reports.
+matplotlib>=3.7.0
+plotly>=5.15.0
+seaborn>=0.12.0
+streamlit>=1.28.0
+python-docx>=1.1.0
+markdown>=3.6
+
+# Storage and checkpoints.
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+
+# FinRL-X / research extension dependencies that are still reasonable for this env.
+bt>=1.2.0
+alpaca-py>=0.13.0
+alpaca-trade-api>=2.1.0
+ccxt>=1.90.41
+pyfolio-reloaded>=0.9.5
+
+# Optional ML / RL baseline support for phase two.
+torch>=2.0.0
+gymnasium>=0.29.0
+stable-baselines3[extra]>=2.3.0
+tensorboard>=2.15.0
+
+# Development and quality.
+pytest>=8.0.0
+pytest-cov>=4.1.0
+ruff>=0.9.4
+black>=23.0.0
+mypy>=1.8.0

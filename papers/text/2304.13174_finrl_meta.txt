@@ -1,0 +1,2062 @@
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market
+Environments for Financial Reinforcement
+Learning
+Xiao-Yang Liu1, Ziyi Xia 1, Hongyang Yang1, Jiechao
+Gao2, Daochen Zha 3, Ming Zhu 4, Christina Dan
+Wang5, Zhaoran Wang 6 and Jian Guo 7
+1Columbia University, USA.
+2University of Virginia, USA.
+3Rice University, USA.
+4SIAT, Chinese Academy of Sciences, China.
+5New York University (Shanghai), China.
+6Northwestern University, USA.
+7IDEA Research, International Digital Economy Academy, China.
+Abstract
+The ﬁnancial market is a particularly challenging playground for deep
+reinforcement learning due to its unique feature of dynamic datasets.
+Building high-quality market environments for training ﬁnancial rein-
+forcement learning (FinRL) agents is diﬃcult due to major factors such
+as the low signal-to-noise ratio of ﬁnancial data, survivorship bias of
+historical data, and model overﬁtting. In this paper, we present FinRL-
+Meta, a data-centric and openly accessible library that processes dynamic
+datasets from real-world markets into gym-style market environments
+and has been actively maintained by the AI4Finance community. First,
+following a DataOps paradigm, we provide hundreds of market environ-
+ments through an automatic data curation pipeline. Second, we provide
+homegrown examples and reproduce popular research papers as stepping
+stones for users to design new trading strategies. We also deploy the
+library on cloud platforms so that users can visualize their own results
+and assess the relative performance via community-wise competitions.
+Third, we provide dozens of Jupyter/Python demos organized into a
+curriculum and a documentation website to serve the rapidly growing
+1
+arXiv:2304.13174v1  [cs.LG]  25 Apr 2023
+
+Springer Nature 2021 LATEX template
+2 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+community. The open-source codes for the data curation pipeline are
+available at https://github.com/AI4Finance-Foundation/FinRL-Meta
+Keywords: Financial reinforcement learning, FinRL, dynamic dataset,
+market environment, AI4Finance, open ﬁnance
+1 Introduction
+Financial reinforcement learning (FinRL) [1, 2] is a promising interdisciplinary
+ﬁeld of ﬁnance and reinforcement learning, driven by the spirit of “trade with
+an (technology) edge”1. In the past decade, deep reinforcement learning (DRL)
+[3], as a disruptive technology, has delivered a superhuman performance in
+Atari games [4], Go [5, 6], StarCraft II [7], the recent eye-catching ChatGPT [8],
+and GPT-4 [9]. The ﬁnancial market is a particularly challenging playground
+for DRL due to the unique feature ofdynamic dataset, a sharp contrast to the
+static ImageNet dataset [10].
+The static ImageNet dataset [10] initiated the ﬁeld of deep learning.
+Researchers designed and applied many deep neural network models to real-
+worldvisualapplications. However,theseapplicationsdealwith “static” datasets,
+such as MNIST, CIFAR-10, Yale Face Database, which are quite diﬀerent from
+the ﬁnancial market, where the data is dynamic in nature. The market trend,
+development of companies, and economic situation of countries are refresh-
+ing over time. To handle time-sensitive ﬁnancial data, models have to learn
+up-to-date information and adapt to real-time market situations.
+Existing works [1, 11, 12] have already applied various DRL algorithms in
+ﬁnancial applications, including investigating market fragility [13], designing
+proﬁtable strategies [14–16], and assessing portfolio risk [11, 17]. Exemplar
+ﬁnancial trading tasks include
+• Fundamentals analysis: e.g., value investing, growth investing
+• Technical analysis: commodity trading advisor (CTA), momentum, trend
+following, etc.
+• Macro strategies: e.g., bonds, gold, crude oil, forex.
+• Quantitative strategies: statistical arbitrage, merge/event arbitrage, etc.
+• High-frequency trading: many diﬀerent sub-strategies inside.
+Some recent works [11, 18, 19] have shown that DRL can deliver better trad-
+ing performance than classical strategies and conventional machine learning
+methods do on these tasks regarding cumulative return and Sharpe ratio. How-
+ever, these works are diﬃcult to reproduce. Several recent eﬀorts have been
+dedicated to facilitating reproducibility. The FinRL library [1, 20] provided an
+open-source framework for ﬁnancial reinforcement learning. Unfortunately, it
+only focused on the reproducibility of backtesting performance by providing
+several market environments. A conference version of FinRL-Meta [21] provided
+1Find a (technology) edge and position to win.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning3
+Fig. 1 DataOps paradigm (left) and FinRL-Meta (right).
+a ﬁnancial dataset and benchmark, but it did not provide a dynamic dataset,
+sentiment data, and market simulator.
+However, building near-real market environments for ﬁnancial reinforcement
+learning (FinRL) is diﬃcult due to major factors such as low signal-to-noise
+ratio (SNR) of ﬁnancial data, partial observation, reward delay, survivorship
+bias of historical data, and model overﬁtting. Such asimulation-to-reality gap
+[22, 23] degrades the performance of DRL strategies in real markets. A good
+backtest performance does not necessarily reﬂect the actual trading performance
+since the ﬁnancial dataset could be susceptible to ﬂaws like missing data, noise,
+and anomalies.
+Data-centric AI [24–26] is a new trend that appeals to shift the focus from
+model to data. It focuses on the systematic engineering of data in building
+AI systems, which can lead to better model behaviors in the real world [25].
+When training DRL agents, if the data is susceptible to ﬂaws, even if our
+model/strategy can have a good backtest performance, it will be hard to tell
+whether the model can actually perform well in the real deployment or is just
+a result of overﬁtting the dataset. Therefore, building a standard workﬂow to
+ensure data quality is imperative to foster reliable market environments and
+benchmarks and motivate the research and industrialization of FinRL.
+In this paper, we present FinRL-Meta, a data-centric and openly accessible
+library that has been actively maintained by the AI4Finance community, with
+a particular focus on data quality. The aim of FinRL-Meta is to create an
+infrastructure to enable real-time paper trading and facilitate the real-world
+adoption of FinRL technology. This contributes to the broader RL or ML
+research community since it allows researchers to test DRL agents in real and
+dynamic environments.
+To handle highly unstructured ﬁnancial big data, we follow theDataOps
+paradigm and implement an automatic data curation pipeline in Fig. 1 (left).
+The DataOps paradigm [27, 28] refers to a set of practices, processes, and
+technologies that combines automated data engineering and agile development
+[28]. It helps reduce the cycle time of data engineering and improve data quality.
+Following the DataOps paradigm, we design an RLOps pipeline tailored for
+FinRL to continuously produce DRL benchmarks on dynamic market datasets.
+The RLOps pipeline consists of the following steps:
+• The ﬁrst step is task planning, such as stock trading, portfolio allocation,
+and cryptocurrency trading.
+
+Springer Nature 2021 LATEX template
+4 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+• Then, we do data processing, including data accessing and cleaning, and
+feature engineering.
+• Next step is where RL takes part in. In particular, the training-testing-
+trading process, detailed in Fig. 4.
+• The ﬁnal step is performance monitoring.
+Fig. 1 (right) shows the overview of FinRL-Meta. First, following the
+DataOps paradigm [27, 28], we provide hundreds of market environments
+through an automatic data curation pipeline that collects dynamic datasets
+from real-world markets and processes them into standard gym-style market
+environments. Second, we reproduce popular papers as benchmarks, including
+high-frequency stock trading, cryptocurrency trading and stock portfolio allo-
+cation, serving as stepping stones for users to design new strategies. With the
+help of the data curation pipeline, we hold our benchmarks on cloud platforms
+so that users can visualize their own results and assess the relative performance
+via community-wise competitions. Third, we provide dozens of Jupyter/Python
+demos as educational materials, organized in a curriculum for community new-
+comers with diﬀerent levels of proﬁciency and learning goals. At the same time,
+we maintain a documentation website to serve the rapidly growing community.
+The remainder of this paper is organized as follows. Section 2 describes
+related works. Section 3 presents an overview of FinRL and the FinRL-Meta
+framework. Section 4 describes the automatic data curation pipeline of FinRL-
+Meta. In Section 5, we present several homegrown examples using FinRL-Meta.
+Finally, we conclude this paper and discuss future works in Section 6.
+2 Related Works
+We review the technology landscape and existing works on ﬁnancial big data,
+data-centric AI, DataOps practices, data-driven RL, and FinRL applications.
+2.1 Handling Financial Big Data
+Financial big data: Financial big data refers to the vast amount of data
+that is available in the ﬁnancial industry from various sources. By analyzing
+this data, traders can make informed decisions about investments. Like all big
+data, ﬁnancial big data also shares the four key properties, known as the 4V’s2:
+volume, variety, velocity, and veracity.
+• 1) Volume. Financial big data has a large scale. Now, the market can
+support high-frequency trading at the level of microseconds. With high-
+frequency trading, billions of shares can be traded within a day, generating
+an enormous amount of data that records these transactions.
+• 2) Velocity. As the market refreshes at the microsecond level, the velocity
+of data transmission and processing is very important. Companies are
+continually seeking ways to speed up data transmission and processing to
+minimize delays and errors. This includes utilizing closer physical proximity
+2The Four V’s of Big Data: https://opensistemas.com/en/the-four-vs-of-big-data/
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning5
+to data vendors, improving cable materials, and developing more eﬃcient
+algorithms.
+• 3) Variety. There are structured and unstructured data in ﬁnance. A data
+vendor may provide structured data for users to access, usually the volume-
+price data. Besides that, there are a huge amount of alternative data from
+news, social media, and ﬁnancial reports that are considered during the
+process of generating indicators.
+• 4) Veracity. Data quality and availability are extremely important. How-
+ever, big data’s larger scale also brings a latent risk of lack of veracity. Due
+to its close relationship with money and assets, data quality is particularly
+sensitive in the ﬁnance industry.
+Data-centric AI:With the 4V’s properties, the quality of ﬁnancial data
+plays a critical role in enabling strong FinRL models in real deployments.
+In the past, FinRL research was conducted in a model-centric way, with an
+emphasis on improving model designs using predetermined datasets. However,
+solely depending on static datasets does not necessarily result in satisfactory
+model performance in real-world scenarios, especially when the dataset is
+ﬂawed [29]. Furthermore, neglecting the importance of data quality can trigger
+data cascades [30], leading to reduced accuracy in real deployments.
+Recently, the attention of researchers and practitioners has gradually shifted
+toward data-centric AI [24–26], with a stronger emphasis on improving data
+quality by the systematic engineering of data. The beneﬁts of data-centric AI
+have been validated by both researchers and practitioners [25, 31]. In order to
+drive tangible advancements in FinRL research and deployment, we have made
+our library data-centric by building upon dynamic datasets and implementing
+an automated data curation pipeline for quality control.
+DataOps practices: From another perspective, a standardized develop-
+ment cycle is necessary for eﬀectively handling highly unstructured ﬁnancial
+big data. DataOps [27, 28] applies the ideas of lean development and DevOps
+to the data science ﬁeld. DataOps practices have been developed in companies
+and organizations to improve the quality and eﬃciency of data analytics [27].
+These implementations consolidate various data sources, and unify and auto-
+mate the pipeline of data analytics, including data accessing, cleaning, analysis,
+and visualization.
+The DataOps paradigm [28], or more accurately the methodology, is a way
+of organizing people, processes and technology to deliver reliable and high-
+quality data eﬃciently to all its users. The practice of DataOps focuses on
+enabling collaboration across the organization to drive agility, speed of delivery
+and new data initiatives. By leveraging the power of automation, DataOps aims
+to address the challenges associated with ineﬃciencies in access, preparation,
+integration and availability of data.
+Many researchers studied FinRL applications [14–16, 18, 32, 33] by build-
+ing their own market environments. Despite the above-mentioned open-source
+libraries that provide some valuable settings, there are no established bench-
+marks yet. On the other hand, the data accessing, cleaning and feature/factor
+
+Springer Nature 2021 LATEX template
+6 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+extraction processes are usually limited to data sources like Yahoo Finance
+and Wharton Research Data Services (WRDS).
+However, the DataOps methodology has not been applied to FinRL research.
+Most researchers access data, clean data, and extract technical indicators
+(features) in a case-by-case manner, which involves heavy manual work and
+may not guarantee high data quality.
+2.2 Data-Driven Reinforcement Learning
+Data-driven RL: If a policy is learned from a collected dataset, it is promising
+that we can get the data-driven strategy3. Based on the datasets, RL will be
+a powerful method to perform data-driven strategies without any interaction
+with the environment or human intervention. RL will greatly reduce human
+labor and therefore improves automation.
+Oﬄine RL [34]: Oﬄine RL is a typical data-driven formulation of rein-
+forcement learning problems. In oﬄine RL, agents learn behaviors from a ﬁxed
+dataset, without the process of exploration in the environment. It has great
+potential in tasks where collecting real-time data is inconvenient, either too
+expensive or risky(e.g., robotic tasks, autonomous driving), or the amount of
+data is limited (e.g., stock market, clinical surgery).
+Curriculum learning: Curriculum learning is a technique that trains the
+model using multiple stages from simple to complex. With ﬁne-tuning for
+speciﬁc tasks, curriculum learning could have faster convergence and ﬁnd better
+minima. [35] proposed to use two stages of training for the portfolio management
+task, ﬁrst using a neural network to ﬁt the mean-variance optimization, then
+ﬁne-tuning the model with online reinforcement learning. Well-known products
+like AlphaGo and ChatGPT both use similar techniques.
+RL from human feedback (RLHF): The idea of RLHF was ﬁrst intro-
+duced by OpenAI and DeepMind in 2017 [36]. RLHF allows human feedback
+as part of the agent’s reward function, making it a better alignment of model
+performance and human expectations. One of the main reasons that ChatGPT
+outperforms other large language models is its appropriate usage of RLHF.
+Next, we review popular projects:
+• OpenAI gym [37] Environments are crucial for training DRL agents [3].
+OpenAI gym provides standardized environments for a collection of bench-
+mark problems that expose a common interface, which is widely supported by
+many libraries [38–40]. Three trading environments,TradingEnv, ForexEnv,
+and StocksEnv, are included to support stock and FOREX markets. However,
+it has not been updated for years.
+• Game of Go.AlphaGo [5] and AlphaGo Zero [6] are programs for games
+of Go. AlphaGo combines Monte Carlo simulation with value and policy net-
+works, and becomes the ﬁrst computer program that defeats world champions
+in Go game. AlphaGo Zero is the updated version, it learns by reinforcement
+3Note that “data-driven” and “data-centric” are two distinct concepts. The former refers to
+utilizing data to guide policy training, whereas the latter means placing data quality in the
+central role in FinRL development. The endeavors of “data-driven” and “data-centric” approaches
+complement each other in their eﬀorts to enhance overall policy performance.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning7
+learning by playing against itself, without extra human data or knowledge.
+These programs also provide suggestions for ﬁnancial reinforcement learning,
+e.g., how to train the policy network by supervised learning and self-play.
+• D4RL[41] introduces the idea ofdatasets for deep data-driven reinforcement
+learning (D4RL). It provides benchmarks in oﬄine RL. However, D4RL does
+not provide ﬁnancial environments.
+• FinRL [1, 20] is an open-source library that builds a full pipeline for ﬁnancial
+reinforcement learning. It contains three market environments, i.e., stock
+trading, portfolio allocation, and crypto trading, and two data sources, i.e.,
+Yahoo Finance and WRDS. However, those market environments of FinRL
+cannot meet the community’s growing demands.
+• NeoRL [42] collected oﬄine RL environments for four areas, CityLearn [43],
+FinRL [1, 20], Industrial Benchmark [44], and MuJoCo [45], where each
+area contains several gym-style environments. Regarding ﬁnancial aspects, it
+directly imports market environments from FinRL.
+• ChatGPT [8] and GPT-4 [9] are large language models for dialogues, which
+can be used as the data source and feature/factor calculation for data-driven
+ﬁnancial reinforcement learning. However, it is not as professional as we think;
+therefore, how to train as an intelligent advisor is an important problem. We
+can follow several steps using dialogue, including guides, listing examples,
+admitting mistakes, etc.
+As a new rising technology, RL is a promising tool for complicated ﬁnancial
+tasks. Recently, many Wall Street companies have shown great interest in this
+rising technology. However, RL’s instability makes it hard to put into practice
+in the industry. AlphaGo and ChatGPT’s success in data-feed multi-stage
+learning could be a great approach to adopting RL into their workﬂow. Hedge
+funds ﬁrst feed their private data into supervised learning (imitation learning)
+models for training, and then use reinforcement learning to ﬁne-tune the model
+based on interaction with the market environments to achieve super-human
+performance.
+2.3 Financial Reinforcement Learning (FinRL)
+RLOps paradigm in ﬁnance. Algorithmic trading [46, 47] has been widely
+adopted in ﬁnancial investments. The lifecycle of a conventional machine learn-
+ing strategy may include ﬁve general stages, as shown in Fig. 2 (left), namely
+data pre-processing, modeling and trading signal generation, portfolio optimiza-
+tion, trade execution, and post-trade analysis. Recently, deep reinforcement
+learning (DRL) [3, 5, 6] has been recognized as a powerful approach for quanti-
+tative ﬁnance, since it has the potential to overcome some important limitations
+of supervised learning, such as the diﬃculty in label speciﬁcation and the gap
+between modeling, positioning, and order execution.
+We would like to extend the principle ofMLOps [48]4 to the RLOps in
+ﬁnanceparadigm that implements and automates the continuous training
+4MLOps is an ML engineering culture and practice that aims at unifying ML system development
+(Dev) and ML system operation (Ops).
+
+Springer Nature 2021 LATEX template
+8 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Fig. 2 Comparison between conventional machine learning approach and RLOps in ﬁnance
+for an algorithmic trading process.
+(CT), continuous integration (CI), and continuous delivery (CD) for trading
+strategies. Such a paradigm will have vast proﬁt potential from a broadened
+horizon and fast speed, which is critical for wider DRL adoption in real-world
+ﬁnancial tasks. TheRLOps in ﬁnanceparadigm, as shown in Fig. 2 (right),
+integrates middle stages (i.e., modeling and trading signal generation, portfolio
+optimization, and trade execution) into a DRL agent. Such a paradigm aims to
+help quantitative traders develop an end-to-end trading strategy with a high
+degree of automation, which removes the latency between stages and results
+in a compact software stack. The major beneﬁt is that it can explore the vast
+potential proﬁts behind the large-scale ﬁnancial data, exceeding the capacity
+of human traders; thus, the trading horizon is lifted into a potentially new
+dimension. Also, it allows traders to continuously update trading strategies,
+which equips traders with an edge in a highly volatile market. However, the
+large-scale ﬁnancial data and fast iteration of trading strategies bring imperative
+challenges in terms of computing power.
+FinRL applications: Along with the RLOps paradigm, diﬀerent FinRL
+applications can be constructed and deployed. Electronic trading is popular
+in many countries and is used in stock exchanges, electronic order books,
+over-the-counter markets, foreign exchange, etc. Electronic trading enhances
+liquidity since traders can easily buy or sell assets. We describe several FinRL
+applications inspired by a complete survey [2], including optimal execution,
+portfolio optimization, option pricing and hedging, market making, smart order
+routing, and robo-advising.
+• 1) Optimal execution is the problem of maximizing the return from buying
+or selling a given amount of an asset within a given time period. A clas-
+sical framework is the Almgren–Chriss model, which relies heavily on the
+assumptions of the dynamics and the permanent and temporary price impact.
+There are several popular criteria to evaluate the performance of execution
+strategies, e.g., the proﬁt and loss, implementation shortfall, and the Sharp
+ratio.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning9
+T able 1 List of state space, action space, and reward function.
+Key components Attributes
+State
+Balance bt ∈ R+; Shares ht ∈ Zn
++
+Opening/high/low/close price ot, ht, lt, pt ∈ Rn
++
+Trading volumevt ∈ Rn
++
+Fundamental indicators; Technical indicators
+Social data; Sentiment data
+Alpha and beta signals; Smart beta indexes, etc.
+Action Buy/Sell/Hold
+Short/Long
+Portfolio weights
+Reward
+Change of portfolio value
+Portfolio log-return
+Sharpe ratio
+Environments
+Dow-30, S&P-500, NASDAQ-100
+Cryptocurrencies
+Foreign currency and exchange
+Futures; Options; ETFs; Forex
+CN securities; US securities
+Paper trading; Live Trading
+• 2) Portfolio optimization aims to maximize some objective function by
+selecting and trading the best portfolio of assets. One typical model is mean-
+variance portfolio optimization, which aims to maximize the return for a
+given risk measured by variance.
+• 3) Option pricing and hedging are important in ﬁnance. The Black-Scholes
+model is a typical mathematical model which aims to get the price of a
+European option given several constraints: stock price, expiration time, and
+the payoﬀ at expiry.
+• 4) Market making aims to earn the bid-ask spread by providing liquidity to
+the market by placing buy/sell limit orders in the limit order books.
+• 5) Robo-advising or automated investment managing provides online ﬁnancial
+advice with minimal human intervention. ChatGPT [8] and GPT-4 [9] may
+be promising advisors if we guide them step by step.
+3 FinRL Tasks and FinRL-Meta Framework
+We introduce the Markov Decision Process (MDP) as a mathematical model of
+FinRL tasks, summarize FinRL challenges, and then provide an overview of
+the proposed FinRL-Meta framework.
+
+Springer Nature 2021 LATEX template
+10 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+3.1 Modeling Financial Reinforcement Learning (FinRL)
+FinRL tasks in general take the form of sequential decision-making problems,
+which can be mathematically formulated as a Markov Decision Process (MDP)
+with ﬁve-tuple(S,A,R, P,γ ) as follows
+• State spaceS consists of all possible states;
+• Action spaceA consists of all available actions;
+• Reward functionR(s,a,s′) :S×A×S→ R assigns a real-valued reward
+to a transition(s,a,s′);
+• Transition probabilityP(s′|a,s ) :S×A×S→ [0, 1] models the dynamics
+of a system (a.k.a., environment);
+• Factorγ∈ (0, 1] discounts a future reward back to its present value.
+MDP is a well-formed mathematical model for sequential decision-making
+tasks in that a decision-maker can partially or fully inﬂuence the outcome.
+State S and actionA deﬁne the input and output for decision-making tasks,
+and reward functionR allows a model to learn by goal-seeking optimization.
+Transition probabilityP allows the target problem to be stochastic, which is
+usually closer to reality. The discount factorγ makes the model consider the
+future reward when making decisions.
+We summarize the state spaces, action spaces, and reward functions of
+FinRL applications in Table 1. States usually demonstrate the condition of
+market and the assets, such as the balance, shares of stocks, OHLCV data,
+technical indicators, sentiment data, etc. Actions are the operations allowed in
+the market, including buy/sell/hold certain shares of the stock, short or long,
+change of portfolio weights on stocks, etc. The reward functions indicate what
+kind of objective we want the agent to achieve, for example, a change of portfolio
+value (a larger positive change leads to a larger positive reward, vice versa) for
+maximizing excess return, Sharpe ratio for balancing return and risk, etc.
+Objective function: Many ﬁnancial tasks can be written in the form
+of optimization problems. When using RL, the objective function is to
+ﬁnd a policyπ(s,a ) that maximizes the discounted cumulative returnr =∑T
+t=0γtR(st,a,s t+1).
+Example I. For the stock trading task [14] on 30 constituent stocks of the
+Dow Jones Industrial Average (DJIA) index, we specify the “state-action-reward”
+as follows:
+• State st = [bt, pt, ft, ht] ∈ R30(I+2)+1, where scalar bt ∈ R+ is the
+remaining balance in the account,pt∈ R30
++ is the prices of 30 stocks,
+ft∈ R30·I is a feature vector and each stock hasI technical indicators, and
+ht∈ R30
++ denotes the share holdings, whereR+ is the set of non-negative
+real numbers.
+• Action at∈ R30 denotes the trading operations on the 30 stocks, i.e.,
+ht+1 = ht + at. When an entryai
+t > 0,i = 1,..., 30, it means a buy-in of
+ai
+t shares on thei-th stock, negative actionai
+t < 0 for selling, and zero
+action ai
+t = 0 keeps hi
+t unchanged.
+• Reward functionR(st, at, st+1)∈ R: Reward is an incentive signal to
+encourage the trading agent to execute actionat at state st. In the stock
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning11
+trading task [14], the reward function is set to be the change of total asset
+values, i.e.,R(st, at, st+1) = vt+1−vt, wherevt and vt+1 are the total
+asset values at statest and st+1, respectively, i.e.,vt = p⊺
+t ht +bt∈ R.
+Example II. Another task is portfolio optimization, also on the 30 con-
+stituent stocks of the Dow Johnes Industrial Average (DJIA) index. The
+"state-action-reward" are speciﬁed as follows:
+• State st = [vt, pt, ft, wt]∈ R30(I+2)+1, where pt∈ R30
++ is the current
+prices of 30 stocks, ft∈ R30·I is a feature vector and each stock hasI
+technical indicators, wt∈ R30 is the portfolio weight allocated on last
+time, andvt =vt−1w⊺
+t−1pt/pt−1 is the total asset value at timet.
+• Action at∈ R30 denotes the new weights assigned to each of the 30 stocks.
+Note there are always ∑30
+i=1 ai
+t = 1. Each ai
+t > 0 means allocating ai
+t
+amount of total asset on thei-th stock. Afterat is applied, wt+1 in the
+state will record the newat, andvt+1 will be recalculated.
+• Reward functionR(st, at, st+1)∈ R: Similar to the stock trading task,
+the reward of portfolio optimization task is also set to be the change of
+total asset values.
+3.2 FinRL Challenges
+Training and testing environments based on historical data may not simulate
+real markets accurately due to thesimulation-to-reality gap[22, 23], and thus a
+trained agent cannot be directly deployed in real-world markets. We summarize
+the main FinRL challenges as follows:
+• Low signal-to-noise ratio (SNR): Data from diﬀerent sources may con-
+tain large noise [49] such as random noise, outliers, etc. It is challenging to
+identify alpha signals or build smart beta indices using noisy datasets.
+• Survivorship bias of historical market data: Survivorship bias is caused
+by a tendency to focus on existing stocks and funds without consideration of
+those that are delisted [50]. It could lead to an overestimation of stocks and
+funds, which will mislead the agent.
+• Model overﬁtting: Existing research mainly report backtesting results.
+It is highly possible that authors are tempted to tune hyper-parameters
+and retrain the agent multiple times5 to obtain better backtesting results,
+resulting in model overﬁtting [51, 52]. This might lead to big trouble during
+real-time trading.
+• Delay: Financial markets have delays due to data transmission, reward feed-
+back, and actuation. The true reward may be based on the users’ interaction
+with the markets, which may take several days. As the delay increases, the
+performance of deep reinforcement learning decreases.
+• Partial observation: The full observability assumption of ﬁnancial mar-
+kets can be extended to partial observation (the underlying states cannot
+be directly observed), i.e., partially observable Markov Decision Process
+(POMDP). A POMDP model utilizes a Hidden Markov Model (HMM) [53] to
+5There is information leakage.
+
+Springer Nature 2021 LATEX template
+12 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Fig. 3 Overview of FinRL-Meta framework, an automatic data curation pipeline.
+model a time series that is caused by a sequence of unobservable states. Con-
+sidering the noisy ﬁnancial data, it is natural to assume that a trading agent
+cannot directly observe market states. Studies suggested that the POMDP
+model can be solved by using recurrent neural networks, e.g., an oﬀ-policy
+Recurrent Deterministic Policy Gradient (RDPG) algorithm [54], and a long
+short-term memory (LSTM) network that encodes partial observations into
+a state of a reinforcement learning algorithm [55].
+• Multi-objective reward function: When we optimize one metric, some
+other metrics may need to be constrained or improved. Therefore, a trade-oﬀ
+between these metrics may be required. In addition, the reward formulation
+involves the weights of metrics, i.e., the weights should be ﬁne-tuned manually.
+• Low interpretability: In deep reinforcement learning, neural networks are
+used to ﬁt the Q-value functions and policies. However, neural networks are
+black-box; therefore, deep reinforcement learning is of low interpretability.
+3.3 Overview of FinRL-Meta Framework
+Following the DataOps paradigm in Fig. 1 and the standard process of data-
+centric AI [25], FinRL-Meta builds a universe of market environments for
+data-driven ﬁnancial reinforcement learning. FinRL-Meta follows thede facto
+standard of OpenAI Gym [37] and thelean principleof software development.
+We have an automatic pipeline using the dynamic dataset with the following
+steps: 1). task planning, 2). data processing, 3). training-testing-trading pipeline,
+4). performance monitoring.
+3.3.1 Layer Structure and Extensibility
+We adopt a layered structure that consists of three layers, data layer, envi-
+ronment layer, and agent layer, as shown in Fig. 3. Layers interact through
+end-to-end interfaces, achieving high extensibility. For updates and substitutes
+inside a layer, this structure minimizes the impact on the whole system. More-
+over, the layer structure allows easy extension of user-deﬁned functions and
+fast updating of algorithms with high performance.
+Data Layer: we follow the DataOps paradigm for data curation to reduce
+the cycle time of data engineering and improve data quality. First, in the data
+processing step, we provide APIs to collect time series price data and sentiment
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning13
+Training
+Testing
+Fine 
+Tuning
+Past
+Future
+Trading
+Trained
+ 
+Model
+Fig. 4 Overview of the training-testing-trading pipeline in FinRL-Meta.
+data from diﬀerent platforms with a uniﬁed interface. Second, the data cleaning
+step will clean up the raw data, which is usually unstructured and contain
+diﬀerent kinds of errors. Third, we will add technical indicators to the data to
+provide more information on the market in the feature engineering step.
+Environment Layer: The well-processed data from the data layer will be
+made into a gym-style market environment in the environment layer. According
+to the chosen task, state-action-reward will be set. FinRL-Meta also provides
+the option of multiprocessing training via vector environment to accelerate the
+training process.
+Agent Layer: we allow a user to plug in a DRL agent and play with a
+market environment from the environment layer. Currently, three libraries are
+supported, including Stable-baseline 3, RLlib, and ElegantRL. We call this
+plug-and-play mode, which will be introduced in detail later.
+3.3.2 Dynamic Datasets and T raining-T esting-T rading
+Pipeline
+For dynamic ﬁnancial data, it is crucial to keep the model learning the latest
+information from the market. However, it will be very time-consuming to
+process data and train the model frequently. Thus, FinRL-Meta brings forward
+the concept of the dynamic dataset.
+The dynamic dataset is a standardized workﬂow of downloading and process-
+ing data following the need for a “training-testing-trading” pipeline periodically.
+This makes the time of training controllable.
+As shown in Fig. 4, we deploy a training-testing-trading pipeline. The DRL
+approach follows a standard end-to-end pipeline. The DRL agent is ﬁrst trained
+in a training environment and then ﬁned-tuned (adjusting hyperparameters)
+in a validation environment. Then the validated agent is tested on historical
+datasets (backtesting). Finally, the tested agent will be deployed in paper
+trading or live trading markets. Our construction of a dynamic dataset ﬁts the
+training-testing-trading pipeline well, providing a potential standard workﬂow
+of ﬁnancial reinforcement learning.
+3.3.3 Plug-and-play Mode for DRL Algorithms
+A DRL agent can be directly plugged in the above training-testing-trading
+pipeline. The following DRL libraries are supported:
+
+Springer Nature 2021 LATEX template
+14 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Feature Engineering     
+Data Accessing               
+Data Cleaning   
+MarketsType
+Data Frequency          
+Cryptocurrency
+ Forex
+CN Securities
+US Stocks
+Merge different data tablesRemove duplicates
+Data Sources           
+QuantConnect
+WRDS
+Baostock
+1 day
+1 minute
+Fixer
+ETFs
+Binance
+1 second
+1 millisecond
+Alpaca
+Data Layer
+YahooFinance
+pandas_datareader
+pandas-finance 1 quarter
+ystockquote
+Marketstack
+Quandl
+Polygon
+JointQuant
+RiceQuant
+Tushare
+AkShare
+CCXT
+Finnhub
+Tiingo
+Alpha Vantage
+IEXCloud
+EOD Historical Data
+ Findatapy
+ Financial Modeling prep
+Exchangerates
+currencylayer
+currencyapi
+Xignite
+Open Exchange Rates
+Handle missing data
+Financial Ratios, Assets, Liabilities, Sales Open-High-Low-Close-Volume
+Fundemental Features
+Social Media, ESG, Google Trends News Sentiment
+Market Features Analytics FeaturesAlternative Features
+Fig. 5 Data layer of FinRL-Meta.
+• ElegantRL [40]: Lightweight, eﬃcient and stable algorithms using PyTorch.
+• Stable-Baselines3 [38]: Improved DRL algorithms based on OpenAI
+Baselines.
+• RLlib [39]: An open-source DRL library that oﬀers high scalability and
+uniﬁed APIs.
+Take the stock trading task described in Section 3.1 as an example. We
+ﬁrst download and preprocess the historical data of the 30 constituent stocks
+of the DJIA index. Then, we construct an environment with the state-action-
+reward speciﬁed in Section 4. Given this environment, we choose an algorithm
+from one of the above three DRL libraries, plug it in with default parameters,
+and train a trading agent. Users could compare the performances of diﬀerent
+algorithms from the same library or diﬀerent libraries.
+4 Automatic Data Curation Pipeline for Market
+Environments
+Financial big data is usually unstructured, which makes data curation necessary.
+Following the principles of data-centric AI [24–26], we construct an automatic
+data curation pipeline to process and engineer data. Speciﬁcally, we process four
+types of data [52], including fundamental data (e.g., earning reports), market
+data (e.g., OHLCV data), analytics (e.g., news sentiment), and alternative
+data (e.g., social media data, ESG data). In addition, we incorporate NLP
+features for ﬁnancial sentiment analysis. We build market environments using
+these features, by following OpenAI gym-style APIs [37].
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning15
+T able 2 Supported data sources. OHLCV means open, high, low, and close prices;
+volume data.
+Data Source Type Max Frequency Raw Data Preprocessed Data
+Alpaca US Stocks, ETFs 1 min OHLCV Prices, indicators
+Baostock CN Securities 5 min OHLCV Prices, indicators
+Binance Cryptocurrency 1 s OHLCV Prices, indicators
+CCXT Cryptocurrency 1 min OHLCV Prices, indicators
+IEXCloud NMS US securities 1 day OHLCV Prices, indicators
+JoinQuant CN Securities 1 min OHLCV Prices, indicators
+QuantConnect US Securities 1 s OHLCV Prices, indicators
+RiceQuant CN Securities 1 ms OHLCV Prices, indicators
+Tushare CN Securities 1 min OHLCV Prices, indicators
+WRDS US Securities 1 ms Intraday Trades Prices, indicators
+YahooFinance US Securities 1 min OHLCV Prices, indicators
+AkShare CN Securities 1 day OHLCV Prices, indicators
+ﬁndatapy CN Securities 1 day OHLCV Prices, indicators
+pandas_datareader US Securities 1 day OHLCV Prices, indicators
+pandas-ﬁnance US Securities 1 day OHLCV Prices, indicators
+ystockquote US Securities 1 day OHLCV Prices, indicators
+Marketstack 50+ countries 1 day OHLCV Prices, indicators
+ﬁnnhub US Stocks, currencies, crypto 1 day OHLCV Prices, indicators
+Financial Modeling prep US stocks, currencies, crypto 1 min OHLCV Prices, indicators
+EOD Historical Data US stocks, and ETFs 1 day OHLCV Prices, indicators
+Alpha Vantage Stock, ETF, forex, crypto, technical indicators 1 min OHLCV Prices, indicators
+Tiingo Stocks, crypto 1 day OHLCV Prices, indicators
+Quandl 250+ sources 1 day OHLCV Prices, indicators
+Polygon US Securities 1 day OHLCV Prices, indicators
+ﬁxer Exchange rate 1 day Exchange rate Exchange rate, indicators
+Exchangerates Exchange rate 1 day Exchange rate Exchange rate, indicators
+Fixer Exchange rate 1 day Exchange rate Exchange rate, indicators
+currencylayer Exchange rate 1 day Exchange rate Exchange rate, indicators
+currencyapi Exchange rate 1 day Exchange rate Exchange rate, indicators
+Open Exchange Rates Exchange rate 1 day Exchange rate Exchange rate, indicators
+XE Exchange rate 1 day Exchange rate Exchange rate, indicators
+Xignite Exchange rate 1 day Exchange rate Exchange rate, indicators
+4.1 Data Layer for Processing and Engineering Highly
+Unstructured Financial Big Data
+Following the training data development pipeline in data-centric AI [25], we
+develop a data layer using DataOps practices [28], shown in Fig. 5. We establish
+a standard pipeline for ﬁnancial data engineering, which processes data from
+diﬀerent sources into a uniﬁed market environment. The pipeline involves a
+data accessing module to collect data, as well as data cleaning and feature
+engineering modules to prepare data and transform it into a form that is
+appropriate for FinRL model training.
+4.1.1 Data Accessing
+Users can connect data APIs of diﬀerent market platforms in Table 2 via our
+common interfaces. Users can access data agilely by specifying the start date,
+end date, stock list, time interval, and other parameters. FinRL-Meta has
+supported more than30 data sources, covering stocks, cryptocurrencies, ETFs,
+forex, etc.
+
+Springer Nature 2021 LATEX template
+16 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+4.1.2 Data Cleaning
+Raw data retrieved from diﬀerent data sources are usually of various formats
+and with erroneous or missing data to diﬀerent extents. It makes data cleaning
+highly time-consuming. With a data processor, we automate the data-cleaning
+process. In addition, we use stock ticker names and data frequency as unique
+identiﬁers to merge all types of data into a uniﬁed data table.
+4.1.3 F eature Engineering
+Feature engineering is an important step in training data development [25].
+Deep learning-based feature engineering has great potential to automate the
+design of technical indicators [56, 57]. FinRL-Meta aggregates eﬀective features
+to help improve model predictive performance. FinRL-Meta currently supports
+ﬁve types of features:
+• Market features: Open-high-low-close price and volume data are the typical
+market data we can directly get from querying the data API. They have
+various data frequencies, such as daily prices from YahooFinance, and TAQ
+(Millisecond Trade and Quote) from WRDS. In addition, we automate the
+calculation of technical indicators based on OHLCV data by connecting
+the Stockstats6 or TA-lib library7 in our data processor, such as Moving
+Average Convergence Divergence (MACD), Average Directional Index (ADX),
+Commodity Channel Index (CCI), etc.
+• Fundamental features: Fundamental features are processed based on the
+earnings data in SEC ﬁlings queried from WRDS. The data frequency is low,
+typically quarterly, e.g., four data points in a year. To avoid information
+leakage, we use a two-month lag beyond the standard quarter end date,
+e.g., Apple released its earnings report on 2022/07/28 for the third quarter
+(2022/06/25) of the year 2022. Thus for the quarter between 04/01 and
+06/30, our trade date is adjusted to 09/01 (same method for the other three
+quarters). We also provide functions in our data processor for calculating
+ﬁnancial ratios based on earnings data such as earnings per share (EPS),
+return on asset (ROA), price to earnings (P/E) ratio, net proﬁt margin,
+quick ratio, etc.
+• Analytics features: We provide news sentiment for analytics features.
+First, we get the news headline and content from WRDS [58]. Next, we use
+NLTK.Vader8 to calculate sentiment based on the sentiment compound score
+of a span of text by normalizing the emotion intensity (positive, negative,
+neutral) of each word. For the time alignment with market data, we use
+the exact enter time, i.e., when the news enters the database and becomes
+available, to match the trade time. For example, if the trade time is every
+ten minutes, we collect the previous ten minutes’ news based on the enter
+time; if no news is detected, then we ﬁll the sentiment with 0.
+6Github repo: https://github.com/jealous/stockstats
+7Github repo: https://github.com/mrjbq7/ta-lib
+8Github repo: https://github.com/nltk/nltk
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning17
+• Alternative features: Alternative features are useful but hard to obtain
+from diﬀerent data sources [52], such as ESG data, social media data, Google
+trend searches, etc. ESG (Environmental, social, governance) data are widely
+used to measure the sustainability and societal impacts of investment. The
+ESG data we provide is from the Microsoft Academic Graph database, which
+is an open-resource database with records of scholarly publications. We have
+functions in our data processor to extract AI publication and patent data,
+such as paper citations, publication counts, patent counts, etc. We believe
+these features reﬂect companies’ research and development capacity for AI
+technologies [59, 60]. It is a good reﬂection of ESG research commitment.
+• Natural language processing (NLP) features: We employ NLP meth-
+ods to extract patterns from many sources such as Twitter, Weibo, Google
+Trends, and Sina ﬁnance. NLP [61] greatly improves the eﬃciency of data
+processing, and reduces the labor of reading texts, websites, videos, and so on.
+NLP in ﬁnance can provide meaningful insights, e.g., sentiment analysis and
+question-answering like ChatGPT [8], and GPT-4 [9] when making decisions.
+NLP features are extracted from a large amount of raw data, and reﬂect the
+states, predictions, and emotions of traders, governments, ﬁnancial institu-
+tions, etc. We list several NLP features here: number of comments, number
+of replies, number of praise/dispraise, and number of optimism/pessimism.
+Apart from the above default features, users can quickly add customized
+features using open-source libraries or add user-deﬁned features. New features
+can be added in two ways: 1) Write a user-deﬁned feature extraction function.
+The returned features are added to a feature array. 2) Store the features in a
+ﬁle, and put it in a default folder. Then, an agent can read these features from
+the ﬁle.
+4.2 Financial Sentiment Analysis
+In addition to the features collected directly from the market data, we also
+perform sentiment analysis on other data sources, and the output sentiment
+score serves as another feature. FinRL-Meta investigates the potential extension
+of sentiment analysis to the ﬁnancial market context and assesses its impact
+on automated trading. In addition to market data such as price and volume,
+NLP features can provide complementary information. The use of market
+data alone is inadequate in capturing unexpected market events, news, and
+company announcements, leading to a diminished capacity of trading strategies
+to respond to unpredictable stock price ﬂuctuations. The incorporation of
+NLP features, speciﬁcally news, social media, company announcement, and
+trends sentiments, can help investors analyze market trends and facilitate the
+examination of the interplay between textual data and stock prices.
+Previous studies have extensively investigated the use of NLP techniques and
+sentiment analysis in stock price prediction and automated trading strategies.
+In a review study, [61] summarized the NLFF (Natural Language Processing
+for Financial Forecasting) methodologies and their applications in related work.
+They organized and categorized these techniques into two primary groups:
+
+Springer Nature 2021 LATEX template
+18 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Sentiment Analysis      
+Word-Level Sentiment Analysis    
+Text Preprocessing      
+Financial Words Filter
+TokenizationAbbreviation Fixing
+Lower-casing, Punctuation, Number Removement
+Company Name ReplacementLemmatization
+NLTK.VADER
+Sentence-Level Sentiment Analysis    
+Verb Valence Shifter
+ NLTK.VADER
+Weighted-Average Sentiment Score
+Output Sentiment Score
+Score Aggregation
+Input Raw Text
+Fig. 6 Lexicon-based sentiment analysis framework.
+1) Lexicon-based, which utilizes pre-trained ﬁnancial sentiment orientation
+dictionaries [62] to label word segments with sentiment scores; and 2) Auto-
+matic Labeling, which employs label propagation frameworks to automatically
+construct lexicons for the ﬁnancial domain using seed words [63, 64]. The
+lexicon-based approach has the advantage of analyzing texts at the word or
+sentence level by labeling groups of seed word segments with positive, nega-
+tive, or neutral sentiments and assigning polarity scores to individual words to
+represent sentiment strengths.
+Our observation of ﬁnancial news revealed that the majority of sentiments
+are expressed through a small group of signaling words related to trading
+actions, such as ‘rise’ and ‘drop’. To address this characteristic, we recognized
+the need for word-level adjustments of sentiment weights for each word segment.
+As a result, we decided to use the lexicon-based approach in our study. However,
+we acknowledge that this approach has two major drawbacks: 1) words can
+have multiple meanings and sentiment strengths in diﬀerent contexts, and 2)
+the meaning and sense of a word that is common in one domain, such as e-
+commerce, may not be common in ﬁnance. To overcome these challenges, we
+explore a specialized framework of lexicon-based sentiment analysis.
+In FinRL-Meta, we propose a lexicon-based sentiment analysis framework
+that is speciﬁcally designed for NLP features. To achieve this, we created a
+customized sentiment dictionary tailored to the characteristics of the ﬁnancial
+sector. Our aim is to improve the accuracy of sentiment classiﬁcation beyond
+what has been achieved by previous NLP sentiment models by optimizing and
+extending the existing sentiment analysis framework while adapting it to the
+textual features of ﬁnancial news.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning19
+4.2.1 Lexicon-based Sentiment Analysis F ramework
+Fig.6illustratesthestructureofourlexicon-basedsentimentanalysisframework,
+which comprises two main stages: text preprocessing and multi-level sentiment
+analysis. The text pre-processing stage involves ﬁve speciﬁc procedures aimed
+at transforming unstructured news text into cleaned, structured text vectors
+suitable for sentiment analysis.
+• 1) In the tokenization stage, the raw texts are tokenized to split them
+into sentence and word segments, which are then respectively parsed into
+word-level and sentence-level sentiment analysis functions.
+• 2) Abbreviation Fixing is performed to restore abbreviations containing
+valuable sentiment signaling words to their complete expressions, enabling
+the sentiment analysis algorithm to capture all sentiment signaling words.
+• 3) Lower-casing, Punctuation, and Number Removement are conducted
+to normalize word segments into their lower-cased format and remove
+unnecessary punctuation and numbers that contain no sentiment values.
+• 4) Company Name Replacement is carried out to remove company names that
+contain sentiment-sensitive terms, and replace them with a term containing
+no sentiment sensitivity, such as “Company Target” or “Company Random”.
+• 5) Lemmatization is employed to group together the inﬂected forms of a word
+so they can be analyzed as a single item, identiﬁed by the word’s lemma.
+Unlike stemming which reduces all terms to their word stem, lemmatization
+restores each word to its lemma form based on its part of speech tagging.
+For instance, the word “developed” is tagged as VERB and restored to the
+lemma “develop”. The word “development” is tagged as NOUN and restored
+to “development”. Since diﬀerent inﬂected forms of a word demonstrate
+distinctive sentiment polarities, the lemmatization method is used instead of
+stemming.
+The sentiment analysis stage of text data involves transforming word and
+sentence vectors obtained during text preprocessing into corresponding senti-
+ment scores, which are then aggregated to obtain the overall sentiment score.
+This stage employs distinct methodologies for word and sentence vectors.
+• 1) For the word vectors, to ﬁlter out irrelevant word segments and concentrate
+on ﬁnance-speciﬁc sentiment signaling words, we utilized the LoughranMc-
+Donald MasterDictionary [61] with over 80,000 core ﬁnancial terms as the
+base ﬁnancial corpus. We then computed word-level sentiment scores using
+the VADER (Valence Aware Dictionary for Sentiment Reasoning) model in
+NLTK [65].
+• 2)Forsentencevectors,wecustomizedandadjustedtheintensitiesofsignaling
+words based on sentence logic and semantics using the Adverb Valence
+Shifter mechanism in the VADER package [65]. To incorporate sentiment-
+strengthening or weakening terms like “hardly” and “signiﬁcantly”, we also
+implemented the Verb Valence Shifter mechanism which identiﬁed the verb
+and noun words as the sentence separator for each input sentence. After
+adjusting the internal sentiment weights of each sentence, we devised rules
+
+Springer Nature 2021 LATEX template
+20 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Dictionary Expansion         
+Unlabeled Financial Words Filtering(23,690 words)
+Synonym Matching(4,129 pairs)
+Synonym Pair Filtering(1,443 pairs)
+Manual Checking(555 words)
+Final Sentiment Dictionary
+NTUSD-Fin Sentiment Dictionary
+Dictionary Merging & Conflicting Sentiment Correction
+NLTK VADER Sentiment Dictionarly
+LoughranMcDonald MasterDictionary
+ NLTK Wordnet
+ NLTK Wordnet & Textblob.Sentiment
+Fig. 7 Financial sentiment dictionary.
+to assign weights to diﬀerent sentences and aggregate the sentence vectors
+to obtain sentence-level sentiment scores.
+4.2.2 Financial Sentiment Dictionary Construction
+The sentiment dictionary is the foundation for lexicon-based sentiment analysis,
+containing information about the emotions or polarity expressed by words,
+phrases, or concepts. As noted in the previous section, one of the major obstacles
+associated with the lexical annotation approach is that the sentiment intensity
+and polarity of a given word often vary across diﬀerent domains. For example,
+in e-commerce, the term “bull” usually refers to an animal species, while in
+the ﬁnance domain, it signiﬁes an inclination for a speciﬁc market, security, or
+industry to rise.
+We create a ﬁnancial sentiment dictionary by customizing and expanding
+two existing sentiment dictionaries, as shown in Fig. 7. The construction process
+involved two stages: dictionary merge and dictionary expansion. During the
+ﬁrst stage, we merged the NTUSD-Fin Sentiment Dictionary with the built-in
+dictionary of the NLTK VADER package. The NTUSD-Fin dictionary [66]
+is a sentiment dictionary speciﬁcally designed for ﬁnance, comprising labels
+for 8,331 words, 112 hashtags, and 115 emojis, and providing multiple scoring
+techniques, such as frequency, CFIDF, chi-squared value, market sentiment
+score, and word vector for tokens. The VADER sentiment dictionary [65],
+created based on social media texts, includes 7,502 labeled words. Throughout
+the merging process, we detected and manually ﬁxed 479 contradictions in the
+semantic polarities of words between the two dictionaries.
+We also observe that certain ﬁnancial terms with sentiment values were not
+accurately captured by the merged sentiment corpus, such as “bullish”, “bearish”,
+“outperform”, “outgrowth”, “high”, and “rise”. Consequently, in the second stage
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning21
+of the construction process, the dictionary was expanded to label more ﬁnancial
+words with sentiment polarity and intensities through a synonym-matching
+mechanism. This process involved four main steps.
+• 1) Unlabeled Financial Words Filtering: the LoughranMcDonald MasterDic-
+tionary [61], which contains over 80,000 core ﬁnancial words, was utilized
+as the base ﬁnancial corpus to ﬁlter out relevant ﬁnancial words without
+attached sentiment polarities, resulting in 23,690 words being ﬁltered out.
+• 2) Synonym Matching: to assign sentiment polarity and intensity scores to
+the unlabeled words, the NLTK Wordnet was used to match each word with
+its labeled synonym. The WordNet [67] is an extensive lexical database of
+English words that groups nouns, verbs, adjectives, and adverbs into sets of
+cognitive synonyms called “synsets”, each expressing a distinct concept. In
+this step, the 23,690 unlabeled words were matched with their synonym lists
+recommended by the WordNet Synset database, and word-synonym pairs
+with labeled synonyms were selected. This resulted in 4,129 word-synonym
+pairs being ﬁltered out.
+• 3) Synonym Pair Filtering: an algorithm was developed to further ﬁlter
+out words with the highest sentiment values from the remaining 4,129
+word-synonym pairs. This algorithm utilized the TextBlob [68] subjectiv-
+ity indicator and synonym path similarity indicator to identify the most
+sentiment-rich word-synonym pairs. The algorithm iterated through all words,
+checking their related synonyms and selecting the synonym with the highest
+similarity score in the SentiWordNet synonym network. After computing the
+subjectivity of each word, those with a subjectivity value of less than 0.2 were
+excluded. This step resulted in 1,443 word-synonym pairs being ﬁltered out.
+• 4) Manual Checking: each word-synonym-sentiment pair was manually
+checked, along with its actual usage in the real news context. If the path
+similarity between the word and its synonym was less than 0.5, its matched
+sentiment score was adjusted based on its meaning in the context. After this
+manual checking step, 555 words were selected as the ﬁnal extended semantic
+dictionary.
+To evaluate sentiment analysis accuracy involving both sentiment polarities
+and strengths, we conduct an experiment based on the news headlines corpus
+used in SemEval-2007 dataset [69], which includes 1000 news headlines manually
+annotated with sentiment scores on six emotion categories: Anger, Disgust,
+Fear, Joy, Sadness, and Surprise. The sentiment scores range from -100 (highly
+negative) to 100 (highly positive), with 0 indicating neutral valence. Of the
+1000 headlines, 468 have a positive valence, 526 have a negative valence, and 6
+have a neutral valence. For this experiment, only headlines with clear positive
+emotions (sentiment valence of 50 to 100) and negative emotions (sentiment
+valence of -100 to -50) were selected, resulting in a dataset of 410 headlines,
+consisting of 155 positive and 255 negative headlines.
+The evaluation results of the experiment are presented in Table 3. Two
+metrics were used to assess the accuracy of the sentiment analysis approaches
+
+Springer Nature 2021 LATEX template
+22 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Approach Polarity Accuracy Valence Correlation
+NLTK VADER (Baseline) 0.60 0.66
+With Verb Valence Shifter 0.62 0.67
+With Financial sentiment
+dictionary(OurApproach)
+0.74 0.70
+T able 3 Evaluation Result of Financial Sentiment Analysis.
+Polarity Accuracy, which measures the proportion of predicted polarity (neg-
+ative, neutral, and positive) that matches the labeled polarity, and Valence
+Correlation, which measures the correlation between predicted valence scores
+(ranging from -1 to 1) and labeled valence scores (ranging from -100 to 100),
+indicating the accuracy of the prediction of news sentiment intensities. As
+shown in the table, our sentiment analysis approach outperforms the baseline
+approach in terms of both Polarity Accuracy and Valence Correlation.
+4.3 Environment Layer for Dynamic Market
+Environments
+FinRL-Meta follows the OpenAI gym-style [37] to create market environments
+using the cleaned data from the data layer. It provides hundreds of environ-
+ments with a common interface. Users can build their environments using
+FinRL-Meta’s interfaces, share their results and compare a strategy’s trad-
+ing performance. Following the gym-style [37], each environment has three
+functions as follows:
+• reset() function resets the environment back to the initial states0
+• step() function takes an actionat from the agent and updates state from
+st to st+1.
+• reward() function computes the reward value transforming fromst to st+1
+by actionat.
+Detailed descriptions can be found in [15][51].
+We plan to add more environments for users’ convenience. For example, we
+are actively building market simulators using limit-order-book data (refer to
+Appx. 5.2.6), where we simulate the market from the playback of historical
+limit-order-book-level data and an order matching mechanism. We foresee the
+ﬂexibility and potential of using a Hidden Markov Model (HMM) [53] or a
+generative adversarial net (GAN) [70] to generate market scenarios [33].
+Incorporating trading constraints to model market frictions: To
+better simulate real-world markets, we incorporate common market frictions
+(e.g., transaction costs and investor risk aversion) and portfolio restrictions
+(e.g., non-negative balance).
+• Flexible account settings: Users can choose whether to allow buying on
+margin or short-selling.
+• Transaction cost: We incorporate the transaction cost to reﬂect market
+friction, e.g., 0.1% of each buy or sell trade.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning23
+• Risk-control for market crash: In FinRL [1, 20], a turbulence index [71]
+is used to control risk during market crash situations. However, calculating
+the turbulence index is time-consuming. It may take minutes, which is not
+suitable for paper trading and live trading. We replace the ﬁnancial turbulence
+index with the volatility index (VIX) [72] that can be accessed immediately.
+Multiprocessing training via vectorized environments: We utilize
+GPUs for multiprocessing training, namely, the vectorized environments tech-
+nique of Isaac Gym [73], which signiﬁcantly accelerates the training process.
+In each CUDA core, a trading agent interacts with a market environment to
+produce transitions in the form of{state, action, reward, next state}. Then,
+all the transitions are stored in a replay buﬀer and later are used to update a
+learner. By adopting this technique in our market simulator, we successfully
+achieve the multiprocessing simulation of hundreds of market environments to
+improve the performance of DRL trading agents on large datasets.
+5 Homegrown Examples and Tutorials
+We provide several homegrown examples and a dozen of tutorials, which serve
+as stepping stones for newcomers. We reproduce popular papers as benchmarks
+for follow-up research.
+5.1 Performance Metrics and Baseline Methods
+We provide the following metrics to measure the trading performance:
+• Cumulative returnR = v−v0
+v0
+, wherev is the ﬁnal portfolio value, andv0
+is the original capital.
+• Annualized returnr = (1 +R)
+365
+t − 1, wheret is the number of trading
+days.
+• Annualized volatility σa =
+√ ∑n
+i=1 (ri−¯r)2
+n−1 , where ri is the annualized
+return in yeari, ¯r is the average annualized return, andn is the number of
+years.
+• Sharpe ratio[74]ST = mean(Rt)−rf
+std(Rt) , whereRt = vt−vt−1
+vt−1
+,rf is the risk-free
+rate, andt = 1,...,T .
+• Max. drawdown: The maximal percentage loss in portfolio value.
+The following baseline trading strategies are provided for comparison:
+• Passive trading strategy[75] is a well-known long-term strategy. The
+investors just buy and hold selected stocks or indexes without further
+activities.
+• Mean-variance and min-variance strategy[76] are two widely used
+strategies that look for a balance between risks and proﬁts. They select a
+diversiﬁed portfolio in order to achieve higher proﬁts at a lower risk.
+• Equally weighted strategyis a portfolio allocation strategy that gives
+equal weights to diﬀerent assets, avoiding allocating overly high weights on
+particular stocks.
+
+Springer Nature 2021 LATEX template
+24 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Fig. 8 Demos of FinRL-Meta, organized in a curriculum structure.
+Fig. 9 Reproducing the stock trading of [14].
+5.2 Homegrown Examples
+For educational purposes, we provide Jupyter/Python as tutorials9 to help
+newcomers get familiar with the whole pipeline.
+In Section 2.3, we have described the RLOps paradigm. Here we will
+demonstrate how to use RLOps in practice by reproducing several prior papers.
+We have reproduced experiments in several papers as benchmarks. Users can
+study our codes for research purposes or use them as stepping stones for
+deploying trading strategies in live markets. In this subsection, we describe
+several home-grown examples in detail, in a sequence of simple to advanced.
+Users could choose the one to learn and run based on their proﬁciency.
+5.2.1 Stock T rading T ask
+The stock trading task is one of the most classical problems in FinRL-Meta.
+The goal is to train a DRL agent to decide the time, ticker, and amount to buy
+and sell on the stock market.
+9https://github.com/AI4Finance-Foundation/FinRL-Tutorials
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning25
+Fig. 10 Data split for a window that consists of training, testing, and trading.
+First, users can use the APIs provided by FinRL-Meta to fetch historical
+OHLCV (open, high, low, close prices, and volume) data of the stocks from
+data platforms like Yahoo Finance. After data cleaning and feature engineering,
+which checks the error and missing data, and then technical indicators are
+added.
+Second, FinRL-Meta will split the processed data into training and testing,
+and construct a gym-style market environment for each, with the state-action-
+reward speciﬁed in Section 3.1. Then, we are able to choose algorithms from
+any one of the DRL libraries and train the agents of these algorithms in the
+market environment.
+Lastly, after we obtain the trained agents, we backtest the agents on the
+environment with testing data. During backtesting, the performance of the
+agents will be compared with the performance of several baselines, such as
+DJIA index, mean-variance, and equally weighted.
+In FinRL-Meta’s demo, after fetching from Yahoo! Finance, we use the data
+from 01/01/2011 to 07/01/2021 for training and the data from 07/01/2021
+to 11/01/2022 for trading. The technical indicators in the state space include
+the following, Moving Average Convergence Divergence (MACD), Relative
+Strength Index (RSI), Commodity Channel Index (CCI), Average Directional
+Index (ADX), etc. All these data will be sealed in a gym-style environment.
+During the training phase, we utilized dynamic datasets with a rolling
+window of 22 trading days and trained ﬁve diﬀerent deep reinforcement learning
+(DRL) algorithms (A2C, DDPG, TD3, PPO, and SAC) in the environment.
+Fig. 9 displays the comparison of their performances with the baseline DJIA
+index after backtesting all the agents. The best agent was found to be A2C,
+achieving a return of 0.102 compared to DJI’s return of 0.030. This demo
+provides a detailed walkthrough of how DRL operates in the stock trading
+task and serves as a benchmark for subsequent works in the ﬁeld of ﬁnancial
+reinforcement learning [14]. This benchmark is beneﬁcial for getting into the
+ﬁeld of ﬁnancial reinforcement learning.
+5.2.2 T rading in Real Time
+Practical tasks like stock trading and cryptocurrency trading suﬀer from the
+false positive issue due to overﬁtting, where an agent might perform well on
+testing data but not on real-world markets. Since backtesting has problems of
+information leakage and overﬁtting, its results is not persuasive to show the
+quality of trained models. Thus, we propose to deploy DRL agent on paper
+trading.
+
+Springer Nature 2021 LATEX template
+26 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Algorithm 1Algorithm for stock trading in real time
+1: Initialize a set of hyper-parameters;
+2: for d = 0 to D− 1 do
+3: # Step 1). Train an agent
+4: Using data period[d−S−N,d−S− 1] to train an agent,
+5: Using data period [d−S,d− 1] to test the trained agent and adjust
+hyper-parameters,
+6: # Step 2). Retrain the agent
+7: Using data period [d−S−N,d − 1] to retrain the agent with the
+adjusted hyper-parameters,
+8: # Step 3). Perform paper trading for one day
+9: Using the trained agent to trade in thed-th day.
+10: end for
+Fig. 10 shows our “training-testing-trading” pipeline. In a window, there
+are N days’ data for training andS days’ data for testing. At the end of a
+window, we perform paper trading for1 day. Note that we always retrain the
+agent usingN +S days of training and testing data together. Then, we roll
+the window forward by1 day ahead and perform the above steps for a new
+window. Paper trading is always carried out for1 day. Therefore,D windows
+correspond toD trading days.
+Alg. 1 summarizes the pipeline of paper trading. ForD trading days from
+0 to D− 1, we keep doing the following three steps:
+• Step 1). Download and processN-day data, from dayd−S−N to day
+d−S− 1. Then build the data into a gym-style environment and train
+the agent. Then download and process S-day data, from dayd−S to day
+d− 1. Then build the data into a gym-style environment and validate how
+the agent performs. According to the agent’s performance on the validation
+environment, adjust hyper-parameters.
+• Step 2). Build the training and testing data, totallyN +S days from day
+d−S−N to dayd− 1 (note that there are390 data points for each day’s
+minute-level data), into a gym-style environment. Update hyper-parameters
+to the values chosen fromStep 1). Then retrain the agent on theseN +S-day
+environments.
+• Step 3). Deploy the trained agent to the paper trading market and trade
+from 9:30 am to 4:00 pm.
+For the experiment, we select Dow Jones 30 stocks as our trading stocks
+and use minute-level historical market data from08/24/2022 to 09/09/2022.
+The data are downloaded from Alpaca10. Then, we use the paper trading APIs
+provided by Alpaca to do paper trading from09/01/2022 to 09/12/2022. The
+cumulative return of our PPO method and conventional random forest method
+is shown in Fig. 11.
+10Web page of Alpaca: https://alpaca.markets/
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning27
+Fig. 11 Stock trading in real-time: cumulative returns for a conventional ML method
+(random forest) VS. our trained PPO agent.
+5.2.3 Ensemble Strategy
+Based on the stock trading task, the ensemble method [15] combines diﬀerent
+agents to obtain an adaptive one, which inherits the best features of agents and
+performs remarkably well in practice. We consider three component algorithms,
+Proximal Policy Optimization (PPO), Advantage Actor-Critic (A2C), and Deep
+Deterministic Policy Gradient (DDPG), which have diﬀerent strengths and
+weaknesses. Using a rolling window, an ensemble agent automatically selects
+the best model for each test period. Again on the 30 constituent stocks of the
+DJIA index, we use data from 01/01/2010 to 07/01/2022 for training and data
+from 07/01/2022 to 01/01/2023 for validation and testing through a quarterly
+rolling window.
+From Fig. 12, we observe that the ensemble agent outperforms other agents.
+In the experiment, the return of the ensemble strategy is0.157, while DJI is
+0.068. The ensemble agent has the highest return, which means it performs
+the best in proﬁts. This benchmark demonstrates that the ensemble strategy
+is eﬀective in constructing a more reliable agent based on several components
+of DRL agents.
+5.2.4 Podracer on Cloud
+We reproduce cloud solutions of population-based training, e.g., generational
+evolution [77] and tournament-based evolution [78]. FinRL-Podracer can easily
+scale out to≥ 1000 GPUs, which features high scalability, elasticity and
+accessibility by following the cloud-native principle. If GPUs are abundant,
+users can take advantage of this benchmark to work on high-frequency trading
+tasks. On an NVIDIA SuperPOD cloud, we conducted extensive experiments
+
+Springer Nature 2021 LATEX template
+28 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+Fig. 12 Reproducing the ensemble strategy of [15].
+on stock trading and found that it substantially outperforms competitors, such
+as OpenAI and RLlib [77]. Detailed instructions are provided on our website.
+Benchmarks on cloud: We provide demos on a cloud platform, Weights
+& Biases11, to demonstrate the training process. We deﬁne the hyperparameter
+sweep, training function, and initialize an agent to train and tune hyperparam-
+eters. On the cloud platform Weights & Biases, users are able to visualize their
+results and assess the relative performance via community-wise competitions.
+5.2.5 Curriculum Learning for Generalizable Agents
+Based on FinRL-Meta (a universe of market environments, say≥ 100), one
+is able to construct an environment by sampling data from multiple market
+datasets, similar to XLand [79]. In this way, one can apply the curriculum
+learning method [79] to train a generally capable agent for several ﬁnancial
+tasks.
+5.2.6 Market Simulator
+Gym market environments: We build all of our environments following
+OpenAI-gym style [37]. The ﬁrst reason is that this makes it convenient for
+plugging in any of the three DRL libraries (Stable Baseline3, RLlib, and
+ElegantRL). Another reason is that it is user-friendly. Newcomers can learn
+our environments fast and then build their own task-speciﬁc environments
+eﬃciently.
+Synthetic data generation: We create a market simulator [19] to simulate
+the markets from the playback of historical limit-order-book-level data and
+the order matching mechanism. Currently, the simulator is at the minute level
+(i.e., one time step = one minute), which is changeable. The state is a stack
+of market indicators and market snapshots from the last few time steps. The
+action is to place an order. We support market orders and limit orders. We
+also provide several wrappers to accept typically discrete or continuous actions.
+Rewards can be conﬁgured by the participants with the aim of generating
+policies that optimize pre-speciﬁed indicators. In our simulator, we take into
+account the following factors: 1) temporary market impact; 2) order delay. We
+11Website: https://wandb.ai/site
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning29
+Fig. 13 Liquidation analysis of [17].
+Fig. 14 An example of hyperparameter tuning.
+do not consider the following factors in our simulator: 1) permanent market
+impact of limit orders; 2) non-resiliency limit order book.
+Liquidation analysis and trade execution:By reproducing [17], we
+build a simulated environment of stock prices according to the Almgren and
+Chriss model. Then we implement the multi-agent DRL algorithms for both
+competing and cooperative liquidation strategies. This benchmark demonstrates
+the trade execution task using deep reinforcement learning algorithms. When
+trading, traders want to minimize the expected trading cost, which is also called
+implementation shortfall. In Fig. 13, there are two agents, and we observe that
+the implementation shortfalls decrease during the training process.
+5.3 More FinRL Demos and Tutorials
+• Portfolio allocation [20]: We train a DRL agent to perform a portfolio
+optimization task on a set of stocks.
+• Cryptocurrency trading [20]: We provide a demo [20] on 10 popular
+cryptocurrencies.
+• Paper trading demo: We provide a demo for paper trading. Users could
+combine their own strategies or trained agents in paper trading.
+
+Springer Nature 2021 LATEX template
+30 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+• China A-share demo: We provide a demo based on the China A-share
+market data using Tushare.
+• Hyperparameter tuning: The default hyperparamters may not be the
+best for our tasks. Reinforcement learning algorithms are sensitive to
+hyperparamters; therefore, hyperparamter tuning is an important issue.
+Hyperparamters are tuned based on an objective. We provide several demos
+for hyperparameter tuning using Optuna [80] and Ray Tune [81]. Fig. 14
+shows an example of hyperparameter tuning in the portfolio allocation task
+using A2C, which aims to maximize the Sharpe ratio.
+• Robo-advising: Robo-advising by integrating ChatGPT [8] and GPT-4 [9]
+will be much more powerful than before. Users are encouraged to develop
+robo-advisor apps by building upon the demos that we have created using
+ChatGPT [8] and GPT-4 [9]. By engaging in conversation with ChatGPT
+using a chain of thought prompt, we may be able to obtain good trading
+advice. Additionally, we have demonstrated that properly guiding ChatGPT
+can generate new ﬁnancial factors, which speeds up the process of creating
+them manually.
+6 Conclusion and Future Works
+Following the data-centric AI principles and the DataOps paradigm, in this
+paper, we developed FinRL-Meta, a data-centric library that provides openly
+accessible dynamic ﬁnancial datasets and reproducible benchmarks. FinRL-
+Meta implements an automated data-curation pipeline tailored for the ﬁnancial
+market, which processes data from diﬀerent sources and integrates them into
+a uniﬁed market environment. FinRL-Meta adheres to the standard OpenAI
+gym-style APIs, making it readily accessible to experts in both reinforcement
+learning and ﬁnance. In addition, we have developed a wide range of homegrown
+examples and tutorials to facilitate the usage of the library. FinRL-Meta will
+serve as a source of inspiration for both researchers and practitioners who are
+interested in FinRL.
+For future work, FinRL-Meta aims to build a universe of ﬁnancial market
+environments, like the XLand environment [79]. To improve the performance
+for large-scale markets, we are exploiting GPU-based massive parallel simu-
+lation such as Isaac Gym [73] and deploying it into projects such as RL for
+market simulator. Moreover, it will be interesting to explore the evolutionary
+perspectives [77, 78, 82, 83] to simulate the markets. We believe that FinRL-
+Meta will provide insights into complex market phenomena and oﬀer guidance
+for ﬁnancial regulations.
+6.1 Explainability
+We reproduce [84] that compares the performance of DRL algorithms with
+machine learning (ML) methods on the multi-step prediction in the portfolio
+allocation task. We use four technical indicators MACD, RSI, CCI, and ADX
+as features. Random Forest (RF), Decision Tree Regression (DT), Linear
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning31
+Fig. 15 Reproducing portfolio management of [84]: Comparison of average correlation
+coeﬃcient and Sharpe ratio among ML and DRL methods.
+Regression (LR), and Support Vector Machine (SVM) are the ML algorithms
+in comparison. We use data from Dow Jones 30 constituent stocks to construct
+the environment. We use data from 04/01/2009 to 03/31/2020 as the training
+set and data from 04/01/2020 to 05/31/2022 for backtesting. In Fig. 15, the
+results show that DRL methods have a higher Sharpe ratio than ML methods.
+Also, DRL methods’ average correlation coeﬃcients are signiﬁcantly higher
+than that of ML methods (multi-step).
+We reproduce [84] that compares the performance of DRL algorithms with
+machine learning (ML) methods on the multi-step prediction in the portfolio
+allocation task. We use four technical indicators MACD, RSI, CCI, and ADX
+as features. Random Forest (RF), Decision Tree Regression (DT), Linear
+Regression (LR), and Support Vector Machine (SVM) are the ML algorithms
+in comparison. We use data from Dow Jones 30 constituent stocks to construct
+the environment. We use data from 04/01/2009 to 03/31/2020 as the training
+set and data from 04/01/2020 to 05/31/2022 for backtesting.
+6.2 Data Privacy, Strategy Privacy and Federated
+Learning Technology
+As our open-source community is continuously developing new features to
+ensure that FinRL-Meta provides a better user experience, one of the main
+targets for our next step is to enhance ﬁnancial data privacy as well as strategy
+privacy for users. We discuss the potential of integrating the federated learning
+technology into our open-source FinRL-Meta, in order to achieve data privacy
+and strategy privacy for our users, say collaboratively training.
+Federated learning is a method for training machine learning models from
+distributed datasets that remains private to data owners. It allows a central
+machine learning model to overcome theisolated data island, i.e., to learn from
+data sets distributed on multiple devices that do not reveal or share the data
+with a central server. We understand that in certain scenarios, our users face
+the problem that they only have a small amount of ﬁnancial data and are not
+
+Springer Nature 2021 LATEX template
+32 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+unable to train a robust model, but they are also hesitant to train their models
+with others due to privacy reasons. To the best of our knowledge, we would like
+to name a few representative examples on the use of federated learning to help
+ﬁnancial applications. Byrd et al. [85] present a privacy-preserving federated
+learning protocol on a real-world credit card fraud dataset for the development
+of federated learning systems. The researchers in WeBank [86] created FATE,
+an industrial-grade project that supports enterprises and institutions to build
+machine learning models collaboratively at large-scale in a distributed manner.
+FATE has been adopted in real-world applications in ﬁnance, health and
+recommender systems. We also want to mention one research work [87] which
+points out the open problems in federated learning. We believe that, as a newly
+introduced method, federated learning has a lot of undiscovered and exciting
+applications that we can develop. We would like to encourage our community
+members to explore the potential of federated learning technologies for the
+beneﬁt of ﬁnancial applications.
+6.3 FinRL-Meta and DAO, DeFi, NFT, Web3
+Over the past decades, we have witnessed capital growth exceeding economic
+growth globally. However, the door to personal capital growth is not open to all.
+In a way, one needs to start rich to get richer. The situation is even worsened
+by the competition with computers. Today in major stock markets, at least
+60% of the trades are automated by algorithms.
+How todemocratize opportunityfor personal capital growth? We need to
+ally with the computers to take advantage of unprecedented amounts of data
+and unparalleled computing infrastructure. Therefore, we come up with this
+vision to establish an AI framework where retail traders can grow personal
+capital via a pay-by-use mode. Today, we have reached a full-stack solution that
+provides ﬁnancially optimized deep reinforcement learning algorithms together
+with cloud-native solutions. Users can easily access numerous ﬁnancial data, as
+well as computational resources whenever needed.
+FinRL [1, 20] is the ﬁrst open-source framework to demonstrate the great
+potential of ﬁnancial reinforcement learning [2]. Over several years’ develop-
+ment12, it has evolved into an ecosystem, FinRL-Meta, serving as a playground
+for data-driven ﬁnancial reinforcement learning. We believe FinRL-Meta will
+reshape our ﬁnancial lives, while our open-source community will make sure it
+is for the better.
+Next, we discuss the potential of combining our open-source FinRL-Meta
+ecosystem with emerging technologies, such as DAO, DeFi, NFT13, and Web314.
+• Decentralized autonomous organizations (DAO) has three features: 1).
+Member-owned communities without centralized leadership; 2). A safe way
+to collaborate with Internet strangers; and 3). A safe place to commit funds
+12We began to build an open-source community with a practical demonstration [14] at NeurIPS
+2018 conference.
+13Ethereum: https://ethereum.org/en/
+14Web3 Foundation: https://web3.foundation/
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning33
+to a speciﬁc cause. In FinRL-Meta’s open-source community (over12K
+users at the moment of ﬁnalizing this paper version), we plan to encourage
+community members to organize into DAO funds (essentially a distributed
+fund) in an ad hoc manner. Members of a DAO fund will employ smart
+contracts to crowdfunding, design strategy, implement algorithmic trading,
+share proﬁt and loss, etc.
+• Decentralized ﬁnance (DeFi) has three features: 1). A global, open alterna-
+tive to the current ﬁnancial system; 2). Products that let you borrow, save,
+invest, trade, and more; and 3). Based on open-source technology that any-
+one can program with. We would like to encourage community members
+to actively explore the potential of ﬁnancial reinforcement learning tech-
+nologies in the emerging DeFi based ﬁnancial markets. For example, using
+the automated environment layer in Section 4.3, we will connect DeFi
+trading systems into gym-style market environments; also, we are actively
+working with ﬁnancial data providers and cloud computing providers to
+upgrade the trading infrastructure.
+• Non-fungible token (NFT) has three features: 1). A way to represent
+anything unique as an Ethereum-based asset; 2). NFTs are giving more
+power to content creators than ever before; and 3). Powered by smart
+contracts on the Ethereum blockchain. In the FinRL-Meta community, we
+would like to encourage community members to release trading strategies
+and codes in the NFT forms, while a DAO fund will buy these NFTs via
+smart contracts and then trade in a DeFi system.
+• Third-generation of WWW (Web3) incorporates concepts such as decen-
+tralization, blockchain technologies, and token-based economics, which is
+essentially community-run Internet. Our open-source FinRL-Meta commu-
+nity will serve Web3 users a unique infrastructure and playground, where
+Web3 users can establish DAO funds to trade in a DeFi system.
+As a near-term development, the FinRL-Meta community would embrace
+the Massive Open Online Courses (MOOC) paradigm. For demonstrative and
+educational purposes, our community members are actively creating notebooks,
+blogs and videos. We believe it would be an eﬀective incentive to release them in
+the form of NFTs. Web3MOOC guarantees authorship and ownership (a right
+to proﬁt) of those NFTs, thus providing a strong incentive to our community
+members for content creation.
+6.4 Accessibility, Accountability, Maintenance and Rights
+FinRL-Meta is an open-source project, held on GitHub. We use the MIT
+License for research and educational usage. while users can utilize them as
+stepping stones for customized trading strategies. Codes, market environments,
+benchmarks and documentations are available on the GitHub repository:
+https://github.com/AI4Finance-Foundation/FinRL-Meta.
+FinRL-Meta has been actively maintained by the AI4Finance community
+which has over12K members at the moment. On GitHub, we keep updating
+
+Springer Nature 2021 LATEX template
+34 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+our codes, merging pull requests, and ﬁxing bugs and issues. We welcome
+contributions from community members, researchers and quant traders.
+We have accumulated six competitive advantages over the past ﬁve years.
+The ﬁrst three are technological innovations:
+• FinRL [1, 20] is the ﬁrst framework to provide an automatic pipeline for
+ﬁnancial reinforcement learning.
+• For ﬁnancial big data, the FinRL-Meta project connects with > 30 market
+data sources.
+• For cloud solutions, the FinRL-Podracer project [77] [78] scales out to
+≥ 1000 GPUs. We have extensive testings on NVIDIA’s DGX-2 SuperPod
+platform.
+Based on the above projects and active contributions, an open-source
+community in the intersection of ML and Finance ﬁelds is emerging. Our
+AI4Finance community is robust with the following three features:
+• We have over12K active community members, many of which are actively
+designing strategies and connecting with paper trading, even live trading.
+We are collaborating with tens of universities and research institutes, and
+≥ 50 software engineers from IT companies.
+• Both Columbia University (Department of Electrical Engineering, Depart-
+ment of Statistics) and New York University ((Department of Finance)
+have opened delicate courses about FinRL, while≥ 120 students in total
+have taken it.
+• In academia, we have several accepted papers and also delivered sev-
+eral invited talks. Our AI4Finance Foundation (https://github.com/
+AI4Finance-Foundation) serves as a bridge between machine learning,
+data science, operation research, and ﬁnance communities.
+Acknowledgement
+We thank Mr. Tao Liu (IDEA Research, International Digital Economy
+Academy) for technical support of computing platform on this research project.
+Ming Zhu was supported by National Natural Science Foundations of China
+(Grant No. 61902387). Christina Dan Wang is supported in part by National
+Natural Science Foundation of China (NNSFC) grant 12271363 and 11901395.
+Disclaimer: Nothing in this paper and the FinRL-Meta reposi-
+tory is ﬁnancial advice, and NOT a recommendation to trade real
+money. Please use common sense and always ﬁrst consult a profes-
+sional before trading or investing.
+References
+[1] Liu, X.-Y., Yang, H., Gao, J., Wang, C.D.: FinRL: Deep reinforcement
+learning framework to automate trading in quantitative ﬁnance. ACM
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning35
+International Conference on AI in Finance (ICAIF) (2021)
+[2] Hambly, B., Xu, R., Yang, H.: Recent advances in reinforcement learning
+in ﬁnance. Mathematical Finance (2023)
+[3] Sutton, R.S., Barto, A.G.: Reinforcement Learning: An Introduction,
+(2018)
+[4] Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A., Veness, J., Bellemare,
+M., Graves, A., Riedmiller, M., Fidjeland, A., Ostrovski, G., Petersen, S.,
+Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra,
+D., Legg, S., Hassabis, D.: Human-level control through deep reinforcement
+learning. Nature518, 529–33 (2015)
+[5] Silver, D., Huang, A., Maddison, C.J., Guez, A., Sifre, L., Van Den Driess-
+che, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot,
+M., et al.: Mastering the game of go with deep neural networks and tree
+search. nature529(7587), 484–489 (2016)
+[6] Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A.,
+Guez, A., Hubert, T., Baker, L., Lai, M., Bolton, A.,et al.: Mastering the
+game of Go without human knowledge. Nature550(7676), 354–359 (2017)
+[7] Vinyals, O., Babuschkin, I., Czarnecki, W.M., Mathieu, M., Dudzik, A.,
+Chung, J., Choi, D.H., Powell, R., Ewalds, T., Georgiev, P.,et al.: Grand-
+master level in StarCraft II using multi-agent reinforcement learning.
+Nature 575(7782), 350–354 (2019)
+[8] Ouyang, L., Wu, J., Jiang, X., Almeida, D., Wainwright, C., Mishkin,
+P., Zhang, C., Agarwal, S., Slama, K., Ray, A.,et al.: Training language
+models to follow instructions with human feedback. Advances in Neural
+Information Processing Systems35, 27730–27744 (2022)
+[9] OpenAI:GPT-4technicalreport.https://arxiv.org/abs/2303.08774(2023)
+[10] Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K., Fei-Fei, L.: ImageNet: A
+large-scale hierarchical image database. In: IEEE Conference on Computer
+Vision and Pattern Recognition, pp. 248–255 (2009)
+[11] Lussange, J., Lazarevich, I., Bourgeois-Gironde, S., Palminteri, S., Gutkin,
+B.: Modelling stock markets by multi-agent reinforcement learning.
+Computational Economics57(1), 113–147 (2021)
+[12] Pricope, T.-V.: Deep reinforcement learning in quantitative algorithmic
+trading: A review. arXiv preprint arXiv:2106.00123 (2021)
+
+Springer Nature 2021 LATEX template
+36 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+[13] Raberto, M., Cincotti, S., Focardi, S.M., Marchesi, M.: Agent-based sim-
+ulation of a ﬁnancial market. Physica A: Statistical Mechanics and its
+Applications 299(1-2), 319–327 (2001)
+[14] Liu, X.-Y., Xiong, Z., Zhong, S., Yang, H., Walid, A.: Practical deep
+reinforcement learning approach for stock trading. Workshop on Challenges
+and Opportunities for AI in Financial Services, NeurIPS (2018)
+[15] Yang, H., Liu, X.-Y., Zhong, S., Walid, A.: Deep reinforcement learning
+for automated stock trading: An ensemble strategy. ACM International
+Conference on AI in Finance (2020)
+[16] Zhang, Z., Zohren, S., Roberts, S.: Deep reinforcement learning for trading.
+The Journal of Financial Data Science2(2), 25–40 (2020)
+[17] Bao, W., Liu, X.-Y.: Multi-agent deep reinforcement learning for liquida-
+tion strategy analysis. ICML Workshop on Applications and Infrastructure
+for Multi-Agent Learning (2019)
+[18] Amrouni, S., Moulin, A., Vann, J., Vyetrenko, S., Balch, T., Veloso, M.:
+ABIDES-Gym: Gym environments for multi-agent discrete event simula-
+tion and application to ﬁnancial markets. ACM International Conference
+on AI in Finance (ICAIF) (2021)
+[19] Han, J., Xia, Z., Liu, X.-Y., Zhang, C., Wang, Z., Guo, j.: Massively parallel
+market simulator for ﬁnancial reinforcement learning. AI in Finance Bridge,
+AAAI (2023)
+[20] Liu, X.-Y., Yang, H., Chen, Q., Zhang, R., Yang, L., Xiao, B., Wang, C.D.:
+FinRL: A deep reinforcement learning library for automated stock trading
+in quantitative ﬁnance. Deep RL Workshop, NeurIPS (2020)
+[21] Liu, X.-Y., Xia, Z., Rui, J., Gao, J., Yang, H., Zhu, M., Wang, C.D., Wang,
+Z., Guo, J.: FinRL-Meta: Market environments and benchmarks for data-
+driven ﬁnancial reinforcement learning. In: Thirty-sixth Conference on
+Neural Information Processing Systems
+[22] Dulac-Arnold, G., Levine, N., Mankowitz, D.J., Li, J., Paduraru, C., Gowal,
+S., Hester, T.: Challenges of real-world reinforcement learning: deﬁnitions,
+benchmarks and analysis. Machine Learning110(9), 2419–2468 (2021)
+[23] Dulac-Arnold, G., Mankowitz, D., Hester, T.: Challenges of real-world
+reinforcement learning. ICML Workshop on Reinforcement Learning for
+Real Life (2019)
+[24] Whang, S.E., Roh, Y., Song, H., Lee, J.-G.: Data collection and quality
+challenges in deep learning: A data-centric AI perspective. The VLDB
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning37
+Journal, 1–23 (2023)
+[25] Zha, D., Bhat, Z.P., Lai, K.-H., Yang, F., Jiang, Z., Zhong, S., Hu, X.: Data-
+centric artiﬁcial intelligence: A survey. arXiv preprint arXiv:2303.10158
+(2023)
+[26] Zha, D., Bhat, Z.P., Lai, K.-H., Yang, F., Hu, X.: Data-centric ai:
+Perspectives and challenges. arXiv preprint arXiv:2301.04819 (2023)
+[27] Atwal, H.: Practical DataOps: Delivering Agile Data Science at Scale,
+(2019)
+[28] Ereth, J.: DataOps: Towards a deﬁnition. LWDA2191, 104–112 (2018)
+[29] Mazumder, M., Banbury, C., Yao, X., Karlaš, B., Rojas, W.G., Diamos,
+S., Diamos, G., He, L., Kiela, D., Jurado, D., et al.: Dataperf: Benchmarks
+for data-centric ai development. arXiv preprint arXiv:2207.10062 (2022)
+[30] Sambasivan, N., Kapania, S., Highﬁll, H., Akrong, D., Paritosh, P., Aroyo,
+L.M.: “everyone wants to do the model work, not the data work”: Data
+cascades in high-stakes ai. In: Proceedings of the 2021 CHI Conference on
+Human Factors in Computing Systems, pp. 1–15 (2021)
+[31] Polyzotis, N., Zaharia, M.: What can data-centric ai learn from data and
+ml engineering? arXiv preprint arXiv:2112.06439 (2021)
+[32] Ardon, L., Vadori, N., Spooner, T., Xu, M., Vann, J., Ganesh, S.: Towards
+a fully RL-based market simulator. ACM International Conference on AI
+in Finance (ICAIF) (2021)
+[33] Coletta, A., Prata, M., Conti, M., Mercanti, E., Bartolini, N., Moulin, A.,
+Vyetrenko, S., Balch, T.: Towards realistic market simulations: a generative
+adversarial networks approach. ACM International Conference on AI in
+Finance (ICAIF) (2021)
+[34] Levine, S., Kumar, A., Tucker, G., Fu, J.: Oﬄine reinforcement learn-
+ing: Tutorial, review, and perspectives on open problems. arXiv preprint
+arXiv:2005.01643 (2020)
+[35] Mahfouz, M., Gopalakrishnan, S., Suau, M., Patra, S., P. Mandic, D.,
+Magazzeni, D., Veloso, M.: Towards asset allocation using behavioural
+cloning and reinforcement learning. AAAI AI for Financial Services Bridge
+(2023)
+[36] Christiano, P.F., Leike, J., Brown, T., Martic, M., Legg, S., Amodei, D.:
+Deep reinforcement learning from human preferences. Advances in Neural
+Information Processing Systems30 (2017)
+
+Springer Nature 2021 LATEX template
+38 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+[37] Brockman, G., Cheung, V., Pettersson, L., Schneider, J., Schulman, J.,
+Tang, J., Zaremba, W.: OpenAI Gym. arXiv preprint arXiv:1606.01540
+(2016)
+[38] Raﬃn, A., Hill, A., Gleave, A., Kanervisto, A., Ernestus, M., Dormann,
+N.: Stable-baselines3: Reliable reinforcement learning implementations.
+Journal of Machine Learning Research (2021)
+[39] Liang, E., Liaw, R., Nishihara, R., Moritz, P., Fox, R., Goldberg, K.,
+Gonzalez, J., Jordan, M., Stoica, I.: RLlib: Abstractions for distributed
+reinforcement learning. In: International Conference on Machine Learning,
+pp. 3053–3062 (2018). PMLR
+[40] Liu, X.-Y., Li, Z., Wang, Z., Zheng, J.: ElegantRL: A Lightweight and
+Stable Deep Reinforcement Learning Library. GitHub (2021)
+[41] Fu, J., Kumar, A., Nachum, O., Tucker, G., Levine, S.: D4RL: Datasets for
+deep data-driven reinforcement learning. arXiv preprint arXiv:2004.07219
+(2020)
+[42] Qin, R., Gao, S., Zhang, X., Xu, Z., Huang, S., Li, Z., Zhang, W., Yu, Y.:
+NeoRL: A near real-world benchmark for oﬄine reinforcement learning.
+NeurIPS Datasets and Benchmarks (2022)
+[43] Vázquez-Canteli, J.R., Kämpf, J., Henze, G., Nagy, Z.: CityLearn v1.0: An
+OpenAI gym environment for demand response with deep reinforcement
+learning. ACM International Conference on Systems for Energy-Eﬃcient
+Buildings, Cities, and Transportation (2019)
+[44] Hein, D., Depeweg, S., Tokic, M., Udluft, S., Hentschel, A., Runkler, T.A.,
+Sterzing, V.: A benchmark environment motivated by industrial control
+problems. In: IEEE Symposium Series on Computational Intelligence
+(SSCI), pp. 1–8 (2017). IEEE
+[45] Todorov,E.,Erez,T.,Tassa,Y.:MuJoCo:Aphysicsengineformodel-based
+control. In: IEEE/RSJ International Conference on Intelligent Robots and
+Systems, pp. 5026–5033 (2012). IEEE
+[46] Treleaven, P., Galas, M., Lalchand, V.: Algorithmic trading review.
+Communications of the ACM56, 76–85 (2013)
+[47] Nuti,G.,Mirghaemi,M.,Treleaven,P.,Yingsaeree,C.:Algorithmictrading.
+Computer 44, 61–69 (2011)
+[48] Alla, S., Adari, S.K.: What is MLOps? In: Beginning MLOps with MLFlow,
+pp. 79–124 (2021)
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning39
+[49] Wilkman, M., et al.: Feasibility of a reinforcement learning based stock
+trader. Aaltodoc (2020)
+[50] Brown, S.J., Goetzmann, W., Ibbotson, R.G., Ross, S.A.: Survivorship
+bias in performance studies. The Review of Financial Studies5(4), 553–580
+(1992)
+[51] Gort, B., Liu, X.-Y., Sun, X., Gao, J., Chen, S., Wang, C.D.: Deep
+reinforcement learning for cryptocurrency trading: Practical approach to
+address backtest overﬁtting. AI in Finance Bridge, AAAI (2023)
+[52] De Prado, M.L.: Advances in Financial Machine Learning, (2018)
+[53] Mamon, R.S., Elliott, R.J.: Hidden Markov Models in Finance vol. 4,
+(2007)
+[54] Liu, Y., Liu, Q., Zhao, H., Pan, Z., Liu, C.: Adaptive quantitative trading:
+An imitative deep reinforcement learning approach. In: Proceedings of the
+AAAI Conference on Artiﬁcial Intelligence), vol. 34, pp. 2128–2135 (2020)
+[55] Rundo, F.: Deep LSTM with reinforcement learning layer for ﬁnancial
+trend prediction in fx high frequency trading systems. Applied Sciences
+9(20), 4460 (2019)
+[56] Xiao, G., Li, J., Chen, Y., Li, K.: Malfcs: An eﬀective malware classiﬁcation
+framework with automated feature extraction based on deep convolutional
+neural networks. Elsevier Journal of Parallel and Distributed Computing
+141, 49–58 (2020)
+[57] Nargesian, F., Samulowitz, H., Khurana, U., Khalil, E.B., Turaga, D.S.:
+Learning feature engineering for classiﬁcation. In: IJCAI, vol. 17, pp.
+2529–2535 (2017)
+[58] Li, X., Li, Y., Yang, H., Yang, L., Liu, X.-Y.: DP-LSTM: Diﬀerential
+privacy-inspired lstm for stock prediction using ﬁnancial news. 33rd Con-
+ference on Neural Information Processing Systems Workshop on Robust
+AI in Financial Services: Data, Fairness, Explainability, Trustworthiness,
+and Privacy, December 2019 (2019)
+[59] Fang, Y., Liu, X.-Y., Yang, H.: Practical machine learning approach to cap-
+ture the scholar data driven Alpha in AI industry. In: IEEE International
+Conference on Big Data (Big Data), pp. 2230–2239 (2019). IEEE
+[60] Chen, Q., Liu, X.-Y.: Quantifying ESG alpha using scholar big data: an
+automated machine learning approach. In: Proceedings of the First ACM
+International Conference on AI in Finance, pp. 1–8 (2020)
+
+Springer Nature 2021 LATEX template
+40 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+[61] Xing, F.Z., Cambria, E., Welsch, R.E.: Natural language based ﬁnancial
+forecasting: a survey. Artiﬁcial Intelligence Review50(1), 49–73 (2018)
+[62] Loughran, T., McDonald, B.: When is a liability not a liability? textual
+analysis, dictionaries, and 10-ks. The Journal of ﬁnance66(1), 35–65
+(2011)
+[63] Hamilton, W.L., Clark, K., Leskovec, J., Jurafsky, D.: Inducing domain-
+speciﬁc sentiment lexicons from unlabeled corpora. In: Proceedings of
+the Conference on Empirical Methods in Natural Language Processing.
+Conference on Empirical Methods in Natural Language Processing, vol.
+2016, p. 595 (2016). NIH Public Access
+[64] Tai, Y.-J., Kao, H.-Y.: Automatic domain-speciﬁc sentiment lexicon gener-
+ation with label propagation. In: Proceedings of International Conference
+on Information Integration and Web-based Applications & Services, pp.
+53–62 (2013)
+[65] Hutto, C., Gilbert, E.: Vader: A parsimonious rule-based model for senti-
+ment analysis of social media text. In: Proceedings of the International
+AAAI Conference on Web and Social Media, vol. 8, pp. 216–225 (2014)
+[66] Chen, C.-C., Huang, H.-H., Chen, H.-H.: Ntusd-ﬁn: a market sentiment
+dictionary for ﬁnancial social media data applications. In: Proceedings of
+the 1st Financial Narrative Processing Workshop (FNP 2018), pp. 37–43
+(2018)
+[67] Miller, G.A.: WordNet: An Electronic Lexical Database, (1998)
+[68] Loria, S., et al.: textblob documentation. Release 0.152(8) (2018)
+[69] Strapparava, C., Mihalcea, R.: Semeval-2007 task 14: Aﬀective text. In:
+Proceedings of the Fourth International Workshop on Semantic Evaluations
+(SemEval-2007), pp. 70–74 (2007)
+[70] Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D.,
+Ozair, S., Courville, A., Bengio, Y.: Generative adversarial nets. Advances
+in Neural Information Processing Systems27 (2014)
+[71] Kritzman, M., Li, Y.: Skulls, ﬁnancial turbulence, and risk management.
+Financial Analysts Journal66(5), 30–41 (2010)
+[72] Whaley, R.E.: Understanding the VIX. The Journal of Portfolio Manage-
+ment 35(3), 98–105 (2009)
+[73] Makoviychuk, V., Wawrzyniak, L., Guo, Y., Lu, M., Storey, K., Macklin,
+M., Hoeller, D., Rudin, N., Allshire, A., Handa, A., State, G.: Isaac
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning41
+Gym: High performance GPU-based physics simulation for robot learning.
+Datasets and Benchmarks Track, NeurIPS (2021)
+[74] Sharpe, W.F.: The Sharpe Ratio. Journal of Portfolio Management (1994)
+[75] Malkiel, B.G.: Passive investment strategies and eﬃcient markets. Euro-
+pean Financial Management9(1), 1–10 (2003)
+[76] Ang, A.: Mean-variance investing. Columbia Business School Research
+Paper No. 12/49 (2012)
+[77] Li, Z., Liu, X.-Y., Zheng, J., Wang, Z., Walid, A., Guo, J.: FinRL-Podracer:
+High-performance and scalable deep reinforcement learning for quantitative
+ﬁnance. ACM International Conference on AI in Finance (ICAIF) (2021)
+[78] Liu, X.-Y., Li, Z., Yang, Z., Zheng, J., Wang, Z., Walid, A., Guo, J., Jordan,
+M.: ElegantRL-Podracer: Scalable and elastic library for cloud-native
+deep reinforcement learning. Deep Reinforcement Learning Workshop at
+NeurIPS (2021)
+[79] Team, O.E.L., Stooke, A., Mahajan, A., Barros, C., Deck, C., Bauer, J.,
+Sygnowski, J., Trebacz, M., Jaderberg, M., Mathieu, M., et al.: Open-ended
+learning leads to generally capable agents. arXiv preprint arXiv:2107.12808
+(2021)
+[80] Akiba, T., Sano, S., Yanase, T., Ohta, T., Koyama, M.: Optuna: A
+next-generation hyperparameter optimization framework. ACM SIGKDD
+International Conference on Knowledge Discovery & Data Mining (2019)
+[81] Liaw, R., Liang, E., Nishihara, R., Moritz, P., Gonzalez, J.E., Stoica, I.:
+Tune: A research platform for distributed model selection and training.
+ICML AutoML Workshop (2018)
+[82] Gupta, A., Savarese, S., Ganguli, S., Fei-Fei, L.: Embodied intelligence via
+learning and evolution. Nature Communications (2021)
+[83] Scholl, M.P., Calinescu, A., Farmer, J.D.: How market ecology explains
+market malfunction. Proceedings of the National Academy of Sciences
+118(26) (2021)
+[84] Guan, M., Liu, X.-Y.: Explainable deep reinforcement learning for portfolio
+management: An empirical approach. ACM International Conference on
+AI in Finance (ICAIF) (2021)
+[85] Byrd, D., Polychroniadou, A.: Diﬀerentially private secure multi-party
+computation for federated learning in ﬁnancial applications. In: Proceed-
+ings of the First ACM International Conference on AI in Finance, pp. 1–9
+
+Springer Nature 2021 LATEX template
+42 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+(2020)
+[86] Liu, Y., Fan, T., Chen, T., Xu, Q., Yang, Q.: Fate: An industrial grade
+platformforcollaborativelearningwithdataprotection.JournalofMachine
+Learning Research22(226), 1–6 (2021)
+[87] Kairouz, P., McMahan, H.B., Avent, B., Bellet, A., Bennis, M., Bhagoji,
+A.N., Bonawitz, K., Charles, Z., Cormode, G., Cummings, R.,et al.:
+Advances and open problems in federated learning. Foundations and
+Trends® in Machine Learning14(1–2), 1–210 (2021)
+[88] Sutton, R.S.: The quest for a common model of the intelligent decision
+maker. arXiv preprint arXiv:2202.13252 (2022)
+[89] Lillicrap, T., Hunt, J., Pritzel, A., Heess, N., Erez, T., Tassa, Y., Silver,
+D., Wierstra, D.: Continuous control with deep reinforcement learning.
+International Conference on Learning Representations (ICLR) (2016)
+[90] Schulman, J., Wolski, F., Dhariwal, P., Radford, A., Klimov, O.: Proximal
+policy optimization algorithms. arXiv:1707.06347 (2017)
+[91] Liu, X.-Y., Rui, J., Gao, J., Yang, L., Yang, H., Wang, Z., Wang, C.D., Jian,
+G.: FinRL-Meta: Data-driven deep reinforcementlearning in quantitative
+ﬁnance. Data-Centric AI Workshop, NeurIPS (2021)
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning43
+T able 4 List of key terms for reinforcement learning.
+Key T erms Description
+Agent [88] A decision maker
+Environment [88] A world with which an agent interacts with
+Gym-style environment [37] A standard form of DRL environment by OpenAI
+Markov Decision Process (MDP) A mathematical framework to model decision-making problems
+State, Action, Reward Three main factors in an agent-environment interaction
+Policy A rule that agent follow to make decision
+Policy gradient An approach to solve RL problems by optimizing the policy directly
+Deep Q-Learning (DQN) [4] The ﬁrst DRL algorithm that uses a neural network to approximate the Q-function
+DDPG [89] Deep Deterministic Policy Gradient algorithm
+PPO [90] Proximal Policy Optimization algorithm
+Hyperparameter tuning Change hyperparameter during training to get a converged result faster
+Ensemble strategy An ML technique. Here we combine several DRL agents to a better model
+Population-based training (PBT) Optimise a population of models and hyperparameters, and select the optimal set
+Generational evolution [77] Employing an evolution strategy over generations
+Tournament-based evolution [78] An evolution by asynchronously updating a tournament board of models
+Curriculum learning Training an ML model from easier to harder data, imitating the human curriculum
+Simulation-to-reality gap The diﬀerence between simulation environment and real-world task
+T able 5 List of key terms for ﬁnance.
+Key T erms Description
+Algorithmic trading A method of trading using designed algorithm instead of human traders
+Backtesting A method to see how a strategy performs on a certain period of historical data
+Signal-to-noise ratio (SNR) A ratio of desired signal (good data) to undesired signal (noise)
+DataOps A series of principles and practices to improve the quality of data science
+Sentiment data A category in ﬁnancial big data that contains subjective viewpoints
+Historical data All kinds of data that already existed in the past
+Survivorship bias A bias caused by only seeing existing examples, but not those already died out
+Information leakage When the data contains future information, causing model overﬁtting
+Paper trading Simulation of buying and selling without using real money
+OHLCV A popular form of market data with: Open, High, Low, Close, Volume
+Technical indicators A statistical calculation based on OHLCV data to indicate future price trends
+Market frictions A ﬁnancial market friction as anything that interferes with trade.
+Market crash A huge drop of market price within a very short time
+Volatility index (VIX) [72] A market index that shows the market’s expectations for volatility
+Limit Order Book (LOB) A list to record the interest of buyers and sellers
+Smart beta index An enhanced indexing strategy to beat a benchmark index
+Liquidation, trade execution An investor closes their position in an asset
+A Terminology
+We provide a list of key terms for reinforcement learning and ﬁnance in Table 4
+and Table 5. For terminologies of reinforcement learning, interested users can
+refer to [88] or the classic textbook [3]. Also, the webpage15 explains key
+concepts of RL. For terminologies of ﬁnance, interested users can refer to [52].
+15OpenAI SpinningUp: https://spinningup.openai.com/en/latest/spinningup/rl_intro.html
+
+Springer Nature 2021 LATEX template
+44 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+B Dataset Documentation and Usages
+We organize the dataset documentation according to the suggested template of
+datasheets for datasets16.
+B.1 Motivation
+• For what purpose was the dataset created?
+As data is refreshing minute-to-millisecond, ﬁnance is a particularly
+diﬃcult playground for deep reinforcement learning.
+In academia, scholars use ﬁnancial big data to obtain more complex
+and precise understanding of markets and economics. While industries use
+ﬁnancial big data to reﬁne their analytical strategies and strengthen their
+prediction models. To serve the rapidly growing AI4Finance community,
+we create FinRL-Meta that provides data access from diﬀerent sources,
+pre-processes the raw data with diﬀerent features, and builds the data to
+RL environments. We aim to provide dynamic RL environments that are
+manageable by users.
+We aim to build a ﬁnancial metaverse, a universe of near real-market
+environments, as a playground for data-driven ﬁnancial machine learning.
+• Who created the dataset?
+FinRL-Meta is an open-source project created by the AI4Finance com-
+munity. Contents of FinRL-Meta are contributed by the authors of this
+paper and will be maintained by members of the AI4Finance community.
+• Who funded the creation of the dataset?
+AI4Finance Foundation, a non-proﬁt open-source community that shares
+AI tools for ﬁnance, funded our project.
+B.2 Composition
+• What do the instances that comprise the dataset represent?
+Instances of FinRL-Meta are volume-price data includes: stocks, securi-
+ties, cryptocurrencies, etc; and sentiment data from social media, ESG,
+Google Trends, etc. FinRL-Meta provides hundreds of market environ-
+ments through an automatic pipeline that collects dynamic datasets from
+real-world markets and processes them into standard gym-style market
+environments. FinRL-Meta also benchmarks popular papers as stepping
+stones for users to design new trading strategies.
+• How many instances are there in total?
+FinRL-Meta does not store data directly. Instead, we provide codes for a
+pipeline of data accessing, data cleaning, feature engineering, and building
+into RL environments. Table 2 provides the supported data sources of
+FinRL-Meta.
+16Timnit Gebru, Jamie Morgenstern, Briana Vecchione, Jennifer Wortman Vaughan, Hanna
+Wal- lach, Hal Daumé Iii, and Kate Crawford. Datasheets for datasets.Communications of the
+ACM, 64(12):86–92, 2021.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning45
+At the moment, there are hundreds of market environments, dozens of
+tutorials and demos, and several benchmarks provided.
+• Does the dataset contain all possible instances or is it a sample
+of instances from a larger set?
+With our provided codes, users could fetch data from the data source
+by properly specifying the starting date, ending date, time granularity,
+asset set, attributes, etc.
+• What data does each instance consist of?
+Now there are several types of ﬁnancial data, as shown in Table 2:
+• Is there a label or target associated with each instance?
+No. There is not label or preset target for each instance. But users can
+use our benchmarks are baselines.
+• Is any information missing from individual instances?
+Yes. In several data sources, there are missing values and we provided
+standard preprocessing methods.
+• Are relationships between individual instances made explicit?
+Yes. An instance is a sample set of the market of interest.
+• Are there recommended data splits?
+We recommend users to follow our training-testing-training pipeline, as
+shown in Fig. 4. Users can ﬂexibly choose their preferred settings, e.g., in
+stock trading task, our demo access Yahoo! Finance database and use data
+from 01/01/2009 to 06/30/2020 for training and data from 07/01/2020 to
+05/31/2022 for backtesting.
+• Are there any errors, sources of noise, or redundancies in the
+dataset?
+For the raw data fetched from diﬀerent sources, there are noise and
+outliers. We provide codes to process the data and built them into standard
+RL gym environment.
+• Is the dataset self-contained, or does it link to or otherwise rely
+on external resources?
+It is linked to external resources. As shown in Table 2, FinRL-Meta
+fetch data from data sources to build gym environments.
+• Does the dataset contain data that might be considered conﬁ-
+dential?
+No. All our data are from publicly available data sources.
+• Does the dataset contain data that, if viewed directly, might
+be oﬀensive, insulting, threatening, or might otherwise cause
+anxiety?
+No. All our data are numerical.
+B.3 Collection Process
+• How was the data associated with each instance acquired?
+FinRL-Meta fetches data from data sources. as shown in Table 2.
+• What mechanisms or procedures were used to collect the data?
+
+Springer Nature 2021 LATEX template
+46 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+FinRL-Meta provides dynamic market environments that are built
+according to users’ settings. To achieve this, we provide software APIs to
+fetch data from diﬀerent data sources. Note that some data sources require
+accounts and passwords or have limitations on the number or frequency
+of requests.
+• If the dataset is a sample from a larger set, what was the
+sampling strategy?
+It is dynamic, depending on users’ settings, such as the starting date,
+ending date, time granularity, asset set, attributes, etc.
+• Who was involved in the data collection process and how were
+they compensated?
+Our codes collect publicly available market data, which is free.
+• Over what timeframe was the data collected?
+It is not applicable because the environments are created dynamically
+by running the codes to fetch data in real-time.
+• Were any ethical review processes conducted?
+No?
+B.4 Preprocessing/cleaning/labeling
+• Was any preprocessing/cleaning/labeling of the data done?
+Yes. For the raw data fetched from diﬀerent sources, there are noise
+and outliers. We provide codes to process the data and built them into
+standard RL gym environment.
+• Was the “raw” data saved in addition to the preprocessed/-
+cleaned/labeled data
+The raw data are hold by diﬀerent data sources (data providers).
+• Is the software that was used to preprocess/clean/label the data
+available?
+Yes. We use our own codes to do cleaning and preprocessing.
+B.5 Uses
+• Has the dataset been used for any tasks already?
+Yes. Thousands of AI4Finance community members use FinRL-Meta
+for learning and research purpose. There are also courses in colleges using
+FinRL-Meta as material for teaching ﬁnancial reinforcement learning.
+Demos and tutorials are mentioned in Section 5.
+• Is there a repository that links to any or all papers or systems
+that use the dataset?
+1. Research papers that used FinRL-Meta are listed here:
+https://github.com/AI4Finance-Foundation/FinRL-Tutorials/blob/
+master/FinRL_papers.md
+Our conference version of FinRL-Meta [21] appeared in NeurIPS 2022
+Datasets and Benchmarks Track.
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning47
+Our workshop version of FinRL-Meta [91] appeared in NeurIPS 2021
+Workshop on Data-Centric AI.
+2. The following three repositories have incorporated FinRL-Meta:
+–FinRL-Meta corresponding to the market layer of FinRL (7K stars):
+https://github.com/AI4Finance-Foundation/FinRL
+– ElegantRL (2.7K stars) supports FinRL-Meta:
+https://github.com/AI4Finance-Foundation/ElegantRL
+– FinRL-Podracer:
+https://github.com/AI4Finance-Foundation/FinRL_Podracer
+• What (other) tasks could the dataset be used for?
+Besides the current tasks (tutorial, demo and benchmarks), FinRL-Meta
+will be useful for the following tasks:
+–Curriculumlearningforagents :BasedonFinRL-Meta(auniverse
+of market environments, say≥ 100), one is able to construct an
+environment by sampling data samples from multiple market datasets,
+similar to XLand [79]. In this way, one can apply the curriculum
+learning method [79] to train a generally capable agent for several
+ﬁnancial tasks.
+–To improve the performance for the large-scale markets, we are
+exploiting GPU-based massive parallel simulation such as Isaac Gym
+[73].
+–It will be interesting to explore the evolutionary perspectives [77, 78,
+82, 83] to simulate the markets. We believe that FinRL-Meta will
+provide insights into complex market phenomena and oﬀer guidance
+for ﬁnancial regulations.
+• Is there anything about the composition of the dataset or
+the way it was collected and preprocessed/cleaned/labeled that
+might impact future uses?
+We believe that FinRL-Meta will not encounter usage limits. Our data
+are fetched from diﬀerent sources in real-time when running the codes.
+However, there may be one or two out of≥ 30 data sources (in Table 2)
+change data access rules that may impact future use. So please refer to
+the rules and accessibility of certain data sources when using.
+• Are there tasks for which the dataset should not be used?
+No. Since there are no ethical problems for FinRL-Meta, users could
+use FinRL-Meta in any task as long as it does not violate laws.
+Disclaimer: Nothing herein is ﬁnancial advice, and NOT a rec-
+ommendationtotraderealmoney.Pleaseusecommonsenseand
+always ﬁrst consult a professional before trading or investing.
+B.6 Distribution
+• Will the dataset be distributed to third parties outside of the
+entity (e.g., company, institution, organization) on behalf of
+which the dataset was created?
+
+Springer Nature 2021 LATEX template
+48 Dynamic Datasets and Market Environments for Financial Reinforcement Learning
+No. It will always be held on GitHub under MIT license, for educational
+and research purposes.
+• How will the dataset be distributed?
+Our codes and existing environments are available on GitHub
+FinRL-Meta repository https://github.com/AI4Finance-Foundation/
+FinRL-Meta.
+• When will the dataset be distributed?
+FinRL-Meta is publicly available since February 14th, 2021.
+• Will the dataset be distributed under a copyright or other intel-
+lectual property (IP) license, and/or under applicable terms of
+use (ToU)?
+FinRL-Meta is distributed under MIT License, for educational and
+research purposes.
+• Have any third parties imposed IP-based or other restrictions
+on the data associated with the instances?
+No.
+• Do any export controls or other regulatory restrictions apply to
+the dataset or to individual instances?
+No. Our data are fetched from diﬀerent sources in real time. However,
+there may be one or two out of≥ 20 data sources (in Table 2) change
+data access rules that may impact future use. So please refer to the rules
+and accessibility of certain data sources when using.
+B.7 Maintenance
+• Who will be supporting/hosting/maintaining the dataset?
+FinRL-Meta has been actively maintained by AI4Finance Foundation
+(including the authors of this paper) which has over 12K members at the
+moment (Mar. 2023). We are actively updating market environments, to
+serve the rapidly growing open-source AI4Finance community.
+• How can the owner/curator/manager of the dataset be con-
+tacted?
+We encourage users to join our Slack channel:
+https://join.slack.com/t/ai4ﬁnanceworkspace/shared_invite/
+zt-v670l1jm-dzTgIT9fHZIjjrqprrY0kg
+or our mailing list:
+https://groups.google.com/u/1/g/ai4ﬁnance,
+• Is there an erratum?
+Users can use GitHub to report issues/bugs and use Slack channel,
+Discord channel, or mailing list (AI4Finance_FinRL at https://groups.
+google.com/u/2/g/ai4ﬁnance) to discuss solutions. AI4Finance community
+is actively improving the codes, say extracting technical indicators, evalu-
+ating feature importance, quantifying the probability of model overﬁtting,
+etc.
+• Will the dataset be updated?
+
+Springer Nature 2021 LATEX template
+Dynamic Datasets and Market Environments for Financial Reinforcement Learning49
+Yes, we are actively updating codes and adding more data sources.
+Users could get information and the newly updated version through our
+GitHub repository, or join the mailing list: https://groups.google.com/u/
+1/g/ai4ﬁnance.
+• If the dataset relates to people, are there applicable limits on
+the retention of the data associated with the instances
+The data of FinRL-Meta do not relate to people.
+• Will older versions of the dataset continue to be supported/host-
+ed/maintained?
+Yes. All versions can be found on our GitHub repository.
+• If others want to extend/augment/build on/contribute to the
+dataset, is there a mechanism for them to do so?
+We maintain FinRL-Meta on GitHub. Users can use GitHub to report
+issues/bugs and use Slack channel or mailing list to discuss solutions. We
+welcome community members to submit pull requests through GitHub.
