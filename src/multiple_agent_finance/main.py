@@ -3,11 +3,123 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from datetime import date
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 from multiple_agent_finance.graph.builder import build_graph
+from multiple_agent_finance.graph.technical_chain import build_technical_chain_graph
+
+
+DEFAULT_REQUEST = (
+    "Analyze company fundamentals, market behavior, news sentiment, and risks. "
+    "Return a conservative decision summary."
+)
+TECHNICAL_REQUEST = (
+    "Run the weekly technical single-link plan: use preloaded market data, "
+    "analyze technical indicators, make a single-stock prediction, and validate the result."
+)
+
+
+def _base_state(
+    ticker: str,
+    user_request: str,
+    *,
+    as_of_date: str | None,
+    confidence_threshold: float,
+    max_retries: int,
+    chain_mode: Literal["full", "technical"],
+    market_period: str = "1y",
+    persist_data: bool = False,
+    market_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    state = {
+        "ticker": ticker.upper(),
+        "user_request": user_request,
+        "as_of_date": as_of_date or date.today().isoformat(),
+        "retry_count": 0,
+        "max_retries": max_retries,
+        "confidence_threshold": confidence_threshold,
+        "chain_mode": chain_mode,
+        "market_period": market_period,
+        "persist_data": persist_data,
+        "shared_memory_refs": [],
+        "knowledge_base_refs": [],
+        "external_data_refs": [],
+        "audit_log": [],
+    }
+    if market_data is not None:
+        state["market_data"] = market_data
+        state["data_ingestion_result"] = {
+            "ticker": ticker.upper(),
+            "source": "preloaded_csv",
+            "persisted": False,
+            "rows_collected": len(market_data.get("records", [])),
+            "rows_persisted": 0,
+            "warnings": list(market_data.get("warnings", [])),
+        }
+    return state
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def load_market_data_csv(
+    path: str | Path,
+    *,
+    ticker: str,
+    as_of_date: str | None = None,
+    period: str = "custom",
+) -> dict[str, Any]:
+    """Load pre-collected OHLCV CSV data for Technical Agent input."""
+
+    csv_path = Path(path)
+    records: list[dict[str, Any]] = []
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            volume = _int_or_none(row.get("volume"))
+            volume_lots = _int_or_none(row.get("volume_lots"))
+            if volume is None and volume_lots is not None:
+                volume = volume_lots * 100
+            records.append(
+                {
+                    "date": row.get("date"),
+                    "open": _float_or_none(row.get("open")),
+                    "high": _float_or_none(row.get("high")),
+                    "low": _float_or_none(row.get("low")),
+                    "close": _float_or_none(row.get("close")),
+                    "volume": volume,
+                }
+            )
+
+    return {
+        "ticker": ticker.upper(),
+        "as_of_date": as_of_date,
+        "period": period,
+        "records": records,
+        "valuation_pe": None,
+        "valuation_pb": None,
+        "warnings": [],
+        "sources": [{"type": "csv", "name": str(csv_path)}],
+    }
 
 
 def run_analysis(
@@ -18,22 +130,48 @@ def run_analysis(
     confidence_threshold: float = 0.75,
     max_retries: int = 1,
 ) -> dict[str, Any]:
-    """Run the LangGraph workflow and return the final state."""
+    """Run the full LangGraph workflow and return the final state."""
 
     graph = build_graph()
-    initial_state = {
-        "ticker": ticker.upper(),
-        "user_request": user_request,
-        "as_of_date": as_of_date or date.today().isoformat(),
-        "retry_count": 0,
-        "max_retries": max_retries,
-        "confidence_threshold": confidence_threshold,
-        "shared_memory_refs": [],
-        "knowledge_base_refs": [],
-        "external_data_refs": [],
-        "audit_log": [],
-    }
-    return graph.invoke(initial_state)
+    return graph.invoke(
+        _base_state(
+            ticker,
+            user_request,
+            as_of_date=as_of_date,
+            confidence_threshold=confidence_threshold,
+            max_retries=max_retries,
+            chain_mode="full",
+        )
+    )
+
+
+def run_technical_chain(
+    ticker: str,
+    user_request: str = TECHNICAL_REQUEST,
+    *,
+    as_of_date: str | None = None,
+    confidence_threshold: float = 0.75,
+    max_retries: int = 1,
+    market_period: str = "1y",
+    persist_data: bool = False,
+    market_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the weekly technical single-link workflow and return the final state."""
+
+    graph = build_technical_chain_graph()
+    return graph.invoke(
+        _base_state(
+            ticker,
+            user_request,
+            as_of_date=as_of_date,
+            confidence_threshold=confidence_threshold,
+            max_retries=max_retries,
+            chain_mode="technical",
+            market_period=market_period,
+            persist_data=persist_data,
+            market_data=market_data,
+        )
+    )
 
 
 def save_to_database(result: dict[str, Any]) -> str:
@@ -48,13 +186,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the LangGraph multi-agent stock analysis.")
     parser.add_argument("--ticker", default="AAPL", help="Stock ticker, e.g. AAPL or MSFT.")
     parser.add_argument(
-        "--request",
-        default="综合分析股票基本面、市场表现、新闻情绪和风险，并给出保守决策摘要。",
-        help="User analysis request.",
+        "--mode",
+        choices=["full", "technical-chain"],
+        default="full",
+        help="Run the full 7-node graph or the weekly technical single-link graph.",
     )
+    parser.add_argument("--request", default=None, help="User analysis request.")
     parser.add_argument("--date", dest="as_of_date", default=None, help="Analysis date.")
     parser.add_argument("--threshold", type=float, default=0.75, help="Confidence threshold.")
     parser.add_argument("--max-retries", type=int, default=1, help="Maximum reflection retries.")
+    parser.add_argument("--market-period", default="1y", help="yfinance history period for technical chain.")
+    parser.add_argument(
+        "--market-data-csv",
+        default=None,
+        help="Pre-collected OHLCV CSV for the technical single-link graph.",
+    )
+    parser.add_argument(
+        "--persist-data",
+        action="store_true",
+        help="Persist collected market bars before running the technical chain.",
+    )
     parser.add_argument("--json", action="store_true", help="Print final state as JSON.")
     parser.add_argument("--save-db", action="store_true", help="Persist analysis result to MySQL.")
     return parser
@@ -62,13 +213,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    result = run_analysis(
-        args.ticker,
-        args.request,
-        as_of_date=args.as_of_date,
-        confidence_threshold=args.threshold,
-        max_retries=args.max_retries,
-    )
+    if args.mode == "technical-chain":
+        market_data = (
+            load_market_data_csv(
+                args.market_data_csv,
+                ticker=args.ticker,
+                as_of_date=args.as_of_date,
+                period=args.market_period,
+            )
+            if args.market_data_csv
+            else None
+        )
+        result = run_technical_chain(
+            args.ticker,
+            args.request or TECHNICAL_REQUEST,
+            as_of_date=args.as_of_date,
+            confidence_threshold=args.threshold,
+            max_retries=args.max_retries,
+            market_period=args.market_period,
+            persist_data=args.persist_data,
+            market_data=market_data,
+        )
+    else:
+        result = run_analysis(
+            args.ticker,
+            args.request or DEFAULT_REQUEST,
+            as_of_date=args.as_of_date,
+            confidence_threshold=args.threshold,
+            max_retries=args.max_retries,
+        )
 
     if args.save_db:
         result["database_run_id"] = save_to_database(result)
@@ -78,9 +251,9 @@ def main() -> None:
         return
 
     print(result["final_report"])
-    print(f"\n报告已保存: {result.get('final_report_path')}")
+    print(f"\nReport saved: {result.get('final_report_path')}")
     if args.save_db:
-        print(f"数据库运行 ID: {result.get('database_run_id')}")
+        print(f"Database run ID: {result.get('database_run_id')}")
 
 
 if __name__ == "__main__":
