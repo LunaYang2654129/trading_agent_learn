@@ -17,7 +17,7 @@ REQUIRED_TECHNICAL_FIELDS = {
 
 def _required_state_fields(chain_mode: str) -> tuple[str, ...]:
     if chain_mode == "technical":
-        return ("market_data", "data_ingestion_result", "technical_indicators")
+        return ("market_data", "technical_indicators")
     return (
         "company_profile",
         "financial_metrics",

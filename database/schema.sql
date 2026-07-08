@@ -94,6 +94,27 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
     ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS market_bars (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ticker VARCHAR(32) NOT NULL,
+  bar_date DATE NOT NULL,
+  open_price DECIMAL(20,6) NULL,
+  high_price DECIMAL(20,6) NULL,
+  low_price DECIMAL(20,6) NULL,
+  close_price DECIMAL(20,6) NULL,
+  volume BIGINT NULL,
+  source VARCHAR(64) NOT NULL DEFAULT 'yfinance',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_market_bars_ticker_date_source (ticker, bar_date, source),
+  KEY idx_market_bars_ticker_date (ticker, bar_date),
+  CONSTRAINT fk_market_bars_symbol
+    FOREIGN KEY (ticker) REFERENCES symbols (ticker)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS company_profiles (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   run_id CHAR(36) NOT NULL,
@@ -150,6 +171,30 @@ CREATE TABLE IF NOT EXISTS news_items (
   PRIMARY KEY (id),
   KEY idx_news_items_ticker_published (ticker, published_at),
   CONSTRAINT fk_news_items_run
+    FOREIGN KEY (run_id) REFERENCES analysis_runs (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS technical_indicators (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  run_id CHAR(36) NOT NULL,
+  ticker VARCHAR(32) NOT NULL,
+  trend VARCHAR(32) NULL,
+  volume_signal VARCHAR(32) NULL,
+  macd_signal VARCHAR(32) NULL,
+  rsi_signal VARCHAR(32) NULL,
+  valuation_pe DECIMAL(18,6) NULL,
+  valuation_pb DECIMAL(18,6) NULL,
+  support DECIMAL(20,6) NULL,
+  resistance DECIMAL(20,6) NULL,
+  indicators JSON NULL,
+  technical_risks JSON NULL,
+  warnings JSON NULL,
+  raw_payload JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_technical_indicators_ticker_created (ticker, created_at),
+  CONSTRAINT fk_technical_indicators_run
     FOREIGN KEY (run_id) REFERENCES analysis_runs (id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB;

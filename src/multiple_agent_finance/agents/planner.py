@@ -25,8 +25,8 @@ def planner_agent_node(state: StockAnalysisState) -> dict:
         tasks.update(
             {
                 "data": (
-                    f"Confirm that OHLCV bars, volume, PE/PB, sources, and ingestion status "
-                    f"are available for {ticker}."
+                    f"Confirm that preloaded OHLCV bars, volume, PE/PB, and sources "
+                    f"are available in state.market_data for {ticker}."
                 ),
                 "technical": (
                     f"Analyze {ticker} using OHLCV bars, volume, MA20/MA60/MA200, MACD, RSI, "

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from datetime import date
+from pathlib import Path
 from typing import Any, Literal
 
 from multiple_agent_finance.graph.builder import build_graph
@@ -16,8 +18,8 @@ DEFAULT_REQUEST = (
     "Return a conservative decision summary."
 )
 TECHNICAL_REQUEST = (
-    "Run the weekly technical single-link plan: collect data, record ingestion status, "
-    "analyze technical indicators, and validate the result."
+    "Run the weekly technical single-link plan: use preloaded market data, "
+    "analyze technical indicators, make a single-stock prediction, and validate the result."
 )
 
 
@@ -31,8 +33,9 @@ def _base_state(
     chain_mode: Literal["full", "technical"],
     market_period: str = "1y",
     persist_data: bool = False,
+    market_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    state = {
         "ticker": ticker.upper(),
         "user_request": user_request,
         "as_of_date": as_of_date or date.today().isoformat(),
@@ -46,6 +49,76 @@ def _base_state(
         "knowledge_base_refs": [],
         "external_data_refs": [],
         "audit_log": [],
+    }
+    if market_data is not None:
+        state["market_data"] = market_data
+        state["data_ingestion_result"] = {
+            "ticker": ticker.upper(),
+            "source": "preloaded_csv",
+            "persisted": False,
+            "rows_collected": len(market_data.get("records", [])),
+            "rows_persisted": 0,
+            "warnings": list(market_data.get("warnings", [])),
+        }
+    return state
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def load_market_data_csv(
+    path: str | Path,
+    *,
+    ticker: str,
+    as_of_date: str | None = None,
+    period: str = "custom",
+) -> dict[str, Any]:
+    """Load pre-collected OHLCV CSV data for Technical Agent input."""
+
+    csv_path = Path(path)
+    records: list[dict[str, Any]] = []
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            volume = _int_or_none(row.get("volume"))
+            volume_lots = _int_or_none(row.get("volume_lots"))
+            if volume is None and volume_lots is not None:
+                volume = volume_lots * 100
+            records.append(
+                {
+                    "date": row.get("date"),
+                    "open": _float_or_none(row.get("open")),
+                    "high": _float_or_none(row.get("high")),
+                    "low": _float_or_none(row.get("low")),
+                    "close": _float_or_none(row.get("close")),
+                    "volume": volume,
+                }
+            )
+
+    return {
+        "ticker": ticker.upper(),
+        "as_of_date": as_of_date,
+        "period": period,
+        "records": records,
+        "valuation_pe": None,
+        "valuation_pb": None,
+        "warnings": [],
+        "sources": [{"type": "csv", "name": str(csv_path)}],
     }
 
 
@@ -81,6 +154,7 @@ def run_technical_chain(
     max_retries: int = 1,
     market_period: str = "1y",
     persist_data: bool = False,
+    market_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the weekly technical single-link workflow and return the final state."""
 
@@ -95,6 +169,7 @@ def run_technical_chain(
             chain_mode="technical",
             market_period=market_period,
             persist_data=persist_data,
+            market_data=market_data,
         )
     )
 
@@ -122,6 +197,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=int, default=1, help="Maximum reflection retries.")
     parser.add_argument("--market-period", default="1y", help="yfinance history period for technical chain.")
     parser.add_argument(
+        "--market-data-csv",
+        default=None,
+        help="Pre-collected OHLCV CSV for the technical single-link graph.",
+    )
+    parser.add_argument(
         "--persist-data",
         action="store_true",
         help="Persist collected market bars before running the technical chain.",
@@ -134,6 +214,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     if args.mode == "technical-chain":
+        market_data = (
+            load_market_data_csv(
+                args.market_data_csv,
+                ticker=args.ticker,
+                as_of_date=args.as_of_date,
+                period=args.market_period,
+            )
+            if args.market_data_csv
+            else None
+        )
         result = run_technical_chain(
             args.ticker,
             args.request or TECHNICAL_REQUEST,
@@ -142,6 +232,7 @@ def main() -> None:
             max_retries=args.max_retries,
             market_period=args.market_period,
             persist_data=args.persist_data,
+            market_data=market_data,
         )
     else:
         result = run_analysis(
