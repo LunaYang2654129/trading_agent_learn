@@ -14,14 +14,20 @@ class StockAnalysisState(TypedDict, total=False):
     retry_count: int
     max_retries: int
     confidence_threshold: float
+    chain_mode: Literal["full", "technical"]
+    market_period: str
+    persist_data: bool
 
-    # Planner and parallel agent outputs.
+    # Data collection and ingestion.
+    market_data: dict[str, Any]
+    data_ingestion_result: dict[str, Any]
+
+    # Planner and specialist-agent outputs.
     planner_tasks: dict[str, Any]
     company_profile: dict[str, Any]
     financial_metrics: dict[str, Any]
-    news_analysis: dict[str, Any]
-    risk_analysis: dict[str, Any]
-    market_snapshot: dict[str, Any]
+    news_sentiment: dict[str, Any]
+    technical_indicators: dict[str, Any]
 
     # Shared memory / knowledge base references.
     shared_memory_refs: Annotated[list[dict[str, Any]], add]

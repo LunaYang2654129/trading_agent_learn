@@ -21,53 +21,84 @@ def _format_report(state: StockAnalysisState) -> str:
     reflection = state.get("reflection_result", {})
     ticker = state.get("ticker", "UNKNOWN")
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    chain_mode = state.get("chain_mode", "full")
 
-    return f"""# {ticker} 多智能体股票分析报告
+    sections = [
+        f"# {ticker} 多智能体股票分析报告",
+        "",
+        f"生成时间: {generated_at}",
+        f"分析日期: {state.get('as_of_date', '未指定')}",
+        f"链路模式: {chain_mode}",
+        f"用户需求: {state.get('user_request', '未指定')}",
+        "",
+        "## 1. 决策摘要",
+        "",
+        f"- 评级: {decision.get('rating', 'unknown')}",
+        f"- 风险等级: {decision.get('risk_level', 'unknown')}",
+        f"- 风险分数: {decision.get('risk_score', 'unknown')}",
+        f"- 置信度: {state.get('confidence_score', 0):.2f}",
+        f"- 反思结论: {reflection.get('review_comment', '未生成')}",
+        "",
+        "## 2. 支撑观点",
+        "",
+        _json_block(decision.get("supporting_points", [])),
+        "",
+        "## 3. 风险点",
+        "",
+        _json_block(decision.get("risk_points", [])),
+        "",
+    ]
 
-生成时间: {generated_at}
-分析日期: {state.get("as_of_date", "未指定")}
-用户需求: {state.get("user_request", "未指定")}
+    if state.get("market_data") or state.get("data_ingestion_result"):
+        sections.extend(
+            [
+                "## 4. 数据采集与入库状态",
+                "",
+                _json_block(
+                    {
+                        "market_data_summary": {
+                            "ticker": state.get("market_data", {}).get("ticker"),
+                            "period": state.get("market_data", {}).get("period"),
+                            "records": len(state.get("market_data", {}).get("records", [])),
+                            "sources": state.get("market_data", {}).get("sources", []),
+                            "warnings": state.get("market_data", {}).get("warnings", []),
+                        },
+                        "data_ingestion_result": state.get("data_ingestion_result", {}),
+                    }
+                ),
+                "",
+            ]
+        )
 
-## 1. 决策摘要
-
-- 评级: {decision.get("rating", "unknown")}
-- 风险等级: {decision.get("risk_level", "unknown")}
-- 风险分数: {decision.get("risk_score", "unknown")}
-- 置信度: {state.get("confidence_score", 0):.2f}
-- 反思结论: {reflection.get("review_comment", "未生成")}
-
-## 2. 支撑观点
-
-{_json_block(decision.get("supporting_points", []))}
-
-## 3. 风险点
-
-{_json_block(decision.get("risk_points", []))}
-
-## 4. 公司画像
-
-{_json_block(state.get("company_profile", {}))}
-
-## 5. 财务分析
-
-{_json_block(state.get("financial_metrics", {}))}
-
-## 6. 新闻舆情
-
-{_json_block(state.get("news_analysis", {}))}
-
-## 7. 行情与风险
-
-{_json_block(state.get("risk_analysis", {}))}
-
-## 8. 反思校验
-
-{_json_block(reflection)}
-
-## 9. 审计日志
-
-{_json_block(state.get("audit_log", []))}
-"""
+    sections.extend(
+        [
+            "## 5. 公司画像",
+            "",
+            _json_block(state.get("company_profile", {})),
+            "",
+            "## 6. 财务分析",
+            "",
+            _json_block(state.get("financial_metrics", {})),
+            "",
+            "## 7. 新闻舆情",
+            "",
+            _json_block(state.get("news_sentiment", {})),
+            "",
+            "## 8. 技术指标分析",
+            "",
+            _json_block(state.get("technical_indicators", {})),
+            "",
+            "## 9. 反思校验",
+            "",
+            _json_block(reflection),
+            "",
+            "## 10. 审计日志",
+            "",
+            _json_block(state.get("audit_log", [])),
+            "",
+        ]
+    )
+    return "\n".join(sections)
 
 
 def _write_report(ticker: str, content: str) -> Path:

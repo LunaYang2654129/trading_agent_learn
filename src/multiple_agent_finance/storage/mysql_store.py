@@ -54,14 +54,72 @@ class DatabaseStore:
     def __init__(self, mysql_url: str | None = None, engine: Engine | None = None) -> None:
         self.engine = engine or create_engine(mysql_url or settings.mysql_url, pool_pre_ping=True)
 
+    def save_market_data(self, market_data: dict[str, Any]) -> int:
+        """Persist normalized OHLCV market bars collected before the agent chain."""
+
+        ticker = str(market_data.get("ticker", "")).upper()
+        records = market_data.get("records", [])
+        if not ticker or not records:
+            return 0
+
+        source = "yfinance"
+        sources = market_data.get("sources", [])
+        if sources and isinstance(sources[0], dict):
+            source = str(sources[0].get("name") or source)
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO symbols (ticker)
+                    VALUES (:ticker)
+                    ON DUPLICATE KEY UPDATE ticker = VALUES(ticker)
+                    """
+                ),
+                {"ticker": ticker},
+            )
+            for record in records:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO market_bars (
+                          ticker, bar_date, open_price, high_price, low_price,
+                          close_price, volume, source
+                        )
+                        VALUES (
+                          :ticker, :bar_date, :open_price, :high_price, :low_price,
+                          :close_price, :volume, :source
+                        )
+                        ON DUPLICATE KEY UPDATE
+                          open_price = VALUES(open_price),
+                          high_price = VALUES(high_price),
+                          low_price = VALUES(low_price),
+                          close_price = VALUES(close_price),
+                          volume = VALUES(volume),
+                          updated_at = CURRENT_TIMESTAMP
+                        """
+                    ),
+                    {
+                        "ticker": ticker,
+                        "bar_date": record.get("date"),
+                        "open_price": _decimal(record.get("open")),
+                        "high_price": _decimal(record.get("high")),
+                        "low_price": _decimal(record.get("low")),
+                        "close_price": _decimal(record.get("close")),
+                        "volume": _int(record.get("volume")),
+                        "source": source,
+                    },
+                )
+        return len(records)
+
     def save_analysis_state(self, state: StockAnalysisState) -> str:
         run_id = str(uuid4())
         ticker = str(state.get("ticker", "")).upper()
         company = state.get("company_profile", {})
         financial = state.get("financial_metrics", {})
-        news = state.get("news_analysis", {})
-        risk = state.get("risk_analysis", {})
-        market = state.get("market_snapshot", {})
+        news = state.get("news_sentiment", {})
+        technical = state.get("technical_indicators", {})
+        market = technical.get("market_snapshot", {})
         decision = state.get("decision_summary", {})
         reflection = state.get("reflection_result", {})
 
@@ -92,7 +150,8 @@ class DatabaseStore:
             self._insert_company_profile(conn, run_id, ticker, company)
             self._insert_financial_metrics(conn, run_id, ticker, financial)
             self._insert_news_items(conn, run_id, ticker, news)
-            self._insert_risk_assessment(conn, run_id, ticker, risk)
+            self._insert_technical_indicators(conn, run_id, ticker, technical)
+            self._insert_risk_assessment(conn, run_id, ticker, decision)
             self._insert_decision(conn, run_id, ticker, decision)
             self._insert_reflection(conn, run_id, reflection)
             self._insert_final_report(conn, run_id, ticker, state)
@@ -137,8 +196,8 @@ class DatabaseStore:
             ("planner", "planner_tasks", state.get("planner_tasks", {})),
             ("company_agent", "company_profile", state.get("company_profile", {})),
             ("financial_agent", "financial_metrics", state.get("financial_metrics", {})),
-            ("news_agent", "news_analysis", state.get("news_analysis", {})),
-            ("risk_agent", "risk_analysis", state.get("risk_analysis", {})),
+            ("news_agent", "news_sentiment", state.get("news_sentiment", {})),
+            ("technical_agent", "technical_indicators", state.get("technical_indicators", {})),
             ("decision_agent", "decision_summary", state.get("decision_summary", {})),
             ("reflection_agent", "reflection_result", state.get("reflection_result", {})),
         ]
@@ -277,7 +336,46 @@ class DatabaseStore:
                 },
             )
 
-    def _insert_risk_assessment(self, conn: Any, run_id: str, ticker: str, risk: dict) -> None:
+    def _insert_technical_indicators(
+        self, conn: Any, run_id: str, ticker: str, technical: dict
+    ) -> None:
+        market = technical.get("market_snapshot", {})
+        indicators = market.get("technical_indicators", {})
+        support_resistance = technical.get("support_resistance", {})
+        conn.execute(
+            text(
+                """
+                INSERT INTO technical_indicators (
+                  run_id, ticker, trend, volume_signal, macd_signal, rsi_signal,
+                  valuation_pe, valuation_pb, support, resistance, indicators,
+                  technical_risks, warnings, raw_payload
+                )
+                VALUES (
+                  :run_id, :ticker, :trend, :volume_signal, :macd_signal, :rsi_signal,
+                  :valuation_pe, :valuation_pb, :support, :resistance, :indicators,
+                  :technical_risks, :warnings, :raw_payload
+                )
+                """
+            ),
+            {
+                "run_id": run_id,
+                "ticker": ticker,
+                "trend": technical.get("trend"),
+                "volume_signal": technical.get("volume_signal"),
+                "macd_signal": technical.get("macd_signal"),
+                "rsi_signal": technical.get("rsi_signal"),
+                "valuation_pe": _decimal(technical.get("valuation_pe")),
+                "valuation_pb": _decimal(technical.get("valuation_pb")),
+                "support": _decimal(support_resistance.get("support")),
+                "resistance": _decimal(support_resistance.get("resistance")),
+                "indicators": _json(indicators),
+                "technical_risks": _json(technical.get("technical_risks", [])),
+                "warnings": _json(technical.get("warnings", [])),
+                "raw_payload": _json(technical),
+            },
+        )
+
+    def _insert_risk_assessment(self, conn: Any, run_id: str, ticker: str, decision: dict) -> None:
         conn.execute(
             text(
                 """
@@ -293,11 +391,11 @@ class DatabaseStore:
             {
                 "run_id": run_id,
                 "ticker": ticker,
-                "risk_score": _int(risk.get("risk_score")),
-                "risk_level": risk.get("risk_level"),
-                "risk_points": _json(risk.get("risk_points", [])),
-                "warnings": _json(risk.get("warnings", [])),
-                "raw_payload": _json(risk),
+                "risk_score": _int(decision.get("risk_score")),
+                "risk_level": decision.get("risk_level"),
+                "risk_points": _json(decision.get("risk_points", [])),
+                "warnings": _json(decision.get("warnings", [])),
+                "raw_payload": _json(decision),
             },
         )
 
