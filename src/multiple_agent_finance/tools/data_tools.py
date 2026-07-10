@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from multiple_agent_finance.config.settings import settings
+
 
 def _safe_float(value: Any) -> float | None:
     try:
@@ -98,6 +100,10 @@ def collect_market_data(
 
     try:
         import yfinance as yf
+
+        cache_dir = settings.data_dir / "yfinance_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        yf.set_tz_cache_location(str(cache_dir))
 
         yf_ticker = yf.Ticker(normalized)
         history = yf_ticker.history(period=period, auto_adjust=True)

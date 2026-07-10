@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -34,6 +35,7 @@ def _base_state(
     market_period: str = "1y",
     persist_data: bool = False,
     market_data: dict[str, Any] | None = None,
+    data_ingestion_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state = {
         "ticker": ticker.upper(),
@@ -52,7 +54,7 @@ def _base_state(
     }
     if market_data is not None:
         state["market_data"] = market_data
-        state["data_ingestion_result"] = {
+        state["data_ingestion_result"] = data_ingestion_result or {
             "ticker": ticker.upper(),
             "source": "preloaded_csv",
             "persisted": False,
@@ -158,6 +160,48 @@ def run_technical_chain(
 ) -> dict[str, Any]:
     """Run the weekly technical single-link workflow and return the final state."""
 
+    data_ingestion_result = None
+    if market_data is None:
+        from multiple_agent_finance.tools.data_tools import collect_market_data
+
+        market_data = collect_market_data(
+            ticker,
+            as_of_date=as_of_date,
+            period=market_period,
+        )
+        data_ingestion_result = {
+            "ticker": ticker.upper(),
+            "source": "yfinance",
+            "persisted": False,
+            "rows_collected": len(market_data.get("records", [])),
+            "rows_persisted": 0,
+            "warnings": list(market_data.get("warnings", [])),
+        }
+        if persist_data:
+            try:
+                data_ingestion_result["rows_persisted"] = int(
+                    save_to_database_market_data(market_data)
+                )
+                data_ingestion_result["persisted"] = True
+            except Exception as exc:
+                data_ingestion_result["warnings"].append(f"Market data persistence failed: {exc}")
+    elif persist_data:
+        data_ingestion_result = {
+            "ticker": ticker.upper(),
+            "source": "preloaded_csv",
+            "persisted": False,
+            "rows_collected": len(market_data.get("records", [])),
+            "rows_persisted": 0,
+            "warnings": list(market_data.get("warnings", [])),
+        }
+        try:
+            data_ingestion_result["rows_persisted"] = int(
+                save_to_database_market_data(market_data)
+            )
+            data_ingestion_result["persisted"] = True
+        except Exception as exc:
+            data_ingestion_result["warnings"].append(f"Market data persistence failed: {exc}")
+
     graph = build_technical_chain_graph()
     return graph.invoke(
         _base_state(
@@ -170,6 +214,7 @@ def run_technical_chain(
             market_period=market_period,
             persist_data=persist_data,
             market_data=market_data,
+            data_ingestion_result=data_ingestion_result,
         )
     )
 
@@ -180,6 +225,27 @@ def save_to_database(result: dict[str, Any]) -> str:
     from multiple_agent_finance.storage.mysql_store import DatabaseStore
 
     return DatabaseStore().save_analysis_state(result)
+
+
+def save_to_database_market_data(market_data: dict[str, Any]) -> int:
+    """Persist collected market bars into MySQL."""
+
+    from multiple_agent_finance.storage.mysql_store import DatabaseStore
+
+    return DatabaseStore().save_market_data(market_data)
+
+
+def _database_error_message(error: Exception) -> str:
+    from multiple_agent_finance.config.settings import settings
+
+    return (
+        "Database save failed. Could not connect to MySQL at "
+        f"{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}. "
+        "Start MySQL with `powershell -ExecutionPolicy Bypass -File scripts/start_mysql.ps1`, "
+        "initialize it with `powershell -ExecutionPolicy Bypass -File "
+        "scripts/init_mysql_database.ps1`, or rerun without `--save-db`. "
+        f"Original error: {error}"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -243,15 +309,25 @@ def main() -> None:
             max_retries=args.max_retries,
         )
 
+    database_error = None
     if args.save_db:
-        result["database_run_id"] = save_to_database(result)
+        try:
+            result["database_run_id"] = save_to_database(result)
+        except Exception as exc:
+            database_error = _database_error_message(exc)
+            result["database_error"] = database_error
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        if database_error:
+            raise SystemExit(1)
         return
 
     print(result["final_report"])
     print(f"\nReport saved: {result.get('final_report_path')}")
+    if database_error:
+        print(f"\n{database_error}", file=sys.stderr)
+        raise SystemExit(1)
     if args.save_db:
         print(f"Database run ID: {result.get('database_run_id')}")
 

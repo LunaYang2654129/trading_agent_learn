@@ -29,6 +29,8 @@ data/shared_memory/*
 !data/shared_memory/.gitkeep
 data/knowledge_base/*
 !data/knowledge_base/.gitkeep
+data/yfinance_cache/*
+!data/yfinance_cache/.gitkeep
 
 database/mysql_data/*
 database/logs/*
