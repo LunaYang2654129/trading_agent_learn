@@ -12,6 +12,7 @@
 - 不修改或影响 Technical Agent 及其工具和现有单链。
 - 不修改 Planner Agent、Decision Agent。
 - Company Agent 必须使用现有 `get_agent_llm("company")` 接口。
+- 所有 Agent 统一使用项目 `.env` 中的 `MAF_LLM_*` 大模型 API 配置；Company Agent 不得增加独立 API Key、模型名、Endpoint 或 Base URL。
 - Company Agent Prompt 继续存放在 `src/multiple_agent_finance/prompts/`。
 - Company Result 必须是可校验、可序列化的统一 JSON。
 - 必须提供独立的 `tests/test_company_agent.py`。
@@ -216,6 +217,37 @@ Company Tools 不生成买卖建议，不以当前时间覆盖 `as_of_date`，�
 }
 ```
 
+### 统一 LLM 配置
+
+Company Agent 不直接实例化 `ChatOpenAI`，只通过现有共享工厂获取客户端：
+
+```python
+from multiple_agent_finance.llm import get_agent_llm
+
+llm = get_agent_llm("company")
+```
+
+`get_agent_llm` 继续委托给带缓存的 `get_base_llm()`。因此 Company、Reflection 以及后续接入 LLM 的其他 Agent 使用同一个客户端配置和同一套 `.env` 变量：
+
+```dotenv
+MAF_LLM_API_KEY=...
+MAF_LLM_MODEL=deepseek-v4-flash
+MAF_LLM_ENDPOINT_ID=
+MAF_LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+MAF_LLM_TEMPERATURE=0.2
+MAF_LLM_TIMEOUT=60
+```
+
+配置规则：
+
+- `MAF_LLM_API_KEY` 是唯一 API Key 来源，不在 Company Prompt、State、日志或代码中复制。
+- `MAF_LLM_ENDPOINT_ID` 非空时优先作为运行模型；否则使用 `MAF_LLM_MODEL`。
+- `MAF_LLM_BASE_URL`、temperature 和 timeout 完全复用项目设置。
+- Company Agent 不读取自定义 `COMPANY_*` LLM 环境变量。
+- Company Agent 不在共享 LLM 失败时静默切换到其他 provider 或硬编码模型。
+- `audit_event` 只记录 `get_base_llm_metadata()` 返回的非敏感元数据，不记录 API Key。
+- LLM 未配置或调用失败时走相同 schema 的确定性降级结果，而不是创建另一套客户端。
+
 ### LLM 调用和降级
 
 LLM 调用分三层：
@@ -358,6 +390,8 @@ LLM + CompanyAnalysis Schema
 - 缺少 `company_data` 时调用 Company Tool。
 - Prompt 包含 ticker、as_of_date、Planner company task 和证据。
 - 使用 `get_agent_llm("company")`。
+- 验证 Company Agent 没有直接实例化 LLM，也不读取独立的 Company API 配置。
+- 验证 LLM 元数据来自现有 `MAF_LLM_*` Settings，审计数据不包含 API Key。
 - 结构化 LLM 返回有效 CompanyAnalysis 时写入 `company_profile`。
 - provider 不支持 structured output 时调用普通 LLM JSON 路径。
 - 普通响应含 code fence 时能够解析 JSON。
