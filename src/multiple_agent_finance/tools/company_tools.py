@@ -1,6 +1,9 @@
-"""Company profile data tools."""
+"""Company-profile evidence tools used by Company Agent."""
 
 from __future__ import annotations
+
+from typing import Any
+
 
 PRODUCT_KEYWORDS = [
     "iPhone",
@@ -25,7 +28,7 @@ PRODUCT_KEYWORDS = [
 
 
 def _extract_products(summary: str) -> list[str]:
-    found = []
+    found: list[str] = []
     lowered = summary.lower()
     for keyword in PRODUCT_KEYWORDS:
         if keyword.lower() in lowered:
@@ -33,8 +36,37 @@ def _extract_products(summary: str) -> list[str]:
     return found[:8]
 
 
-def get_company_profile(ticker: str) -> dict:
-    """Return a normalized company profile with graceful fallback."""
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _empty_financial_evidence() -> dict[str, float | None]:
+    return {
+        "total_cash": None,
+        "total_debt": None,
+        "debt_to_equity": None,
+        "current_ratio": None,
+        "profit_margins": None,
+        "operating_cashflow": None,
+        "free_cashflow": None,
+    }
+
+
+def _empty_growth_evidence() -> dict[str, float | None]:
+    return {
+        "revenue_growth": None,
+        "earnings_growth": None,
+        "earnings_quarterly_growth": None,
+    }
+
+
+def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str, Any]:
+    """Return normalized company evidence with a stable offline fallback."""
 
     normalized = ticker.upper()
     try:
@@ -45,48 +77,61 @@ def get_company_profile(ticker: str) -> dict:
             raise ValueError("empty company profile")
 
         summary = info.get("longBusinessSummary") or "公司业务摘要暂不可用。"
-        industry = info.get("industry") or "未知行业"
-        sector = info.get("sector") or "未知板块"
         company_name = info.get("longName") or info.get("shortName") or normalized
-
-        risks = []
-        if info.get("trailingPE") and info.get("trailingPE", 0) > 60:
-            risks.append("估值倍数偏高，需要结合成长性验证。")
-        if info.get("debtToEquity") and info.get("debtToEquity", 0) > 150:
-            risks.append("债务权益比偏高，需要关注偿债压力。")
-        if not risks:
-            risks.append("公司层面风险需要结合行业资料和财报进一步验证。")
-
-        main_products = _extract_products(summary)
+        sector = info.get("sector") or "unknown"
+        industry = info.get("industry") or "unknown"
+        market_cap = _safe_float(info.get("marketCap"))
 
         return {
             "ticker": normalized,
+            "as_of_date": as_of_date,
             "company_name": company_name,
             "business_summary": summary,
-            "industry": industry,
             "sector": sector,
-            "main_products": main_products,
-            "competitive_position": f"{company_name} 位于 {sector}/{industry}，需结合市场份额和同业估值进一步比较。",
-            "shareholder_structure": "股权结构需接入交易所、年报或专业数据库后补全。",
-            "market_cap": info.get("marketCap"),
+            "industry": industry,
+            "main_products": _extract_products(summary),
             "website": info.get("website"),
-            "key_risks": risks,
+            "market_cap": market_cap,
+            "competitive_evidence": {
+                "market_cap": market_cap,
+                "enterprise_value": _safe_float(info.get("enterpriseValue")),
+            },
+            "financial_evidence": {
+                "total_cash": _safe_float(info.get("totalCash")),
+                "total_debt": _safe_float(info.get("totalDebt")),
+                "debt_to_equity": _safe_float(info.get("debtToEquity")),
+                "current_ratio": _safe_float(info.get("currentRatio")),
+                "profit_margins": _safe_float(info.get("profitMargins")),
+                "operating_cashflow": _safe_float(info.get("operatingCashflow")),
+                "free_cashflow": _safe_float(info.get("freeCashflow")),
+            },
+            "growth_evidence": {
+                "revenue_growth": _safe_float(info.get("revenueGrowth")),
+                "earnings_growth": _safe_float(info.get("earningsGrowth")),
+                "earnings_quarterly_growth": _safe_float(
+                    info.get("earningsQuarterlyGrowth")
+                ),
+            },
             "warnings": [],
             "sources": [{"type": "company_profile", "name": "yfinance"}],
         }
     except Exception as exc:
         return {
             "ticker": normalized,
+            "as_of_date": as_of_date,
             "company_name": normalized,
-            "business_summary": "公司资料暂不可用，当前使用离线降级结果。",
-            "industry": "未知行业",
-            "sector": "未知板块",
+            "business_summary": "公司资料暂不可用。",
+            "sector": "unknown",
+            "industry": "unknown",
             "main_products": [],
-            "competitive_position": "公司竞争地位待接入真实数据源验证。",
-            "shareholder_structure": "股权结构待接入交易所、年报或专业数据库。",
-            "market_cap": None,
             "website": None,
-            "key_risks": ["公司资料源暂不可用，结论需保守处理。"],
+            "market_cap": None,
+            "competitive_evidence": {
+                "market_cap": None,
+                "enterprise_value": None,
+            },
+            "financial_evidence": _empty_financial_evidence(),
+            "growth_evidence": _empty_growth_evidence(),
             "warnings": [f"公司资料获取失败: {exc}"],
             "sources": [{"type": "fallback", "name": "company_profile_unavailable"}],
         }
