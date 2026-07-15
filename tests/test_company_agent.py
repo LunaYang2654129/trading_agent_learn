@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from multiple_agent_finance.agents import company as company_module
 from multiple_agent_finance.agents.company_schema import CompanyAnalysis
 from multiple_agent_finance.tools.company_tools import get_company_profile
 
@@ -178,3 +179,190 @@ def test_get_company_profile_returns_stable_fallback(monkeypatch):
     assert result["financial_evidence"]["total_cash"] is None
     assert result["growth_evidence"]["revenue_growth"] is None
     assert result["warnings"] == ["公司资料获取失败: offline"]
+
+
+def _company_evidence() -> dict:
+    return {
+        "ticker": "AAPL",
+        "as_of_date": "2026-07-15",
+        "company_name": "Apple Inc.",
+        "business_summary": "Apple designs devices and services.",
+        "sector": "Technology",
+        "industry": "Consumer Electronics",
+        "main_products": ["iPhone", "Services"],
+        "website": "https://www.apple.com",
+        "market_cap": 3_000_000_000_000.0,
+        "competitive_evidence": {
+            "market_cap": 3_000_000_000_000.0,
+            "enterprise_value": 3_100_000_000_000.0,
+        },
+        "financial_evidence": {
+            "total_cash": 100.0,
+            "total_debt": 75.0,
+            "debt_to_equity": 120.0,
+            "current_ratio": 0.9,
+            "profit_margins": 0.25,
+            "operating_cashflow": 110.0,
+            "free_cashflow": 90.0,
+        },
+        "growth_evidence": {
+            "revenue_growth": 0.08,
+            "earnings_growth": 0.1,
+            "earnings_quarterly_growth": 0.12,
+        },
+        "warnings": [],
+        "sources": [{"type": "company_profile", "name": "fixture"}],
+    }
+
+
+def _company_state(*, company_data: dict | None = None) -> dict:
+    state = {
+        "ticker": "aapl",
+        "as_of_date": "2026-07-15",
+        "user_request": "Focus on long-term company quality.",
+        "planner_tasks": {"company": "Evaluate durable company quality."},
+        "knowledge_base_refs": [{"key": "industry-note"}],
+        "shared_memory_refs": [{"agent": "planner", "key": "plan"}],
+        "audit_log": [],
+    }
+    if company_data is not None:
+        state["company_data"] = company_data
+    return state
+
+
+class _Invoker:
+    def __init__(self, result: object, captured: dict) -> None:
+        self.result = result
+        self.captured = captured
+
+    def invoke(self, messages: object) -> object:
+        self.captured["messages"] = messages
+        return self.result
+
+
+class _StructuredLLM:
+    def __init__(self, payload: dict, captured: dict) -> None:
+        self.payload = payload
+        self.captured = captured
+
+    def with_structured_output(self, schema: type) -> _Invoker:
+        self.captured["schema"] = schema
+        return _Invoker(CompanyAnalysis.model_validate(self.payload), self.captured)
+
+    def invoke(self, messages: object) -> object:
+        raise AssertionError("plain fallback should not run")
+
+
+class _PlainFallbackLLM:
+    def __init__(self, payload: dict, *, fenced: bool = False) -> None:
+        content = json.dumps(payload, ensure_ascii=False)
+        self.content = f"```json\n{content}\n```" if fenced else content
+        self.plain_calls = 0
+
+    def with_structured_output(self, schema: type) -> object:
+        raise NotImplementedError("structured output unavailable")
+
+    def invoke(self, messages: object) -> object:
+        self.plain_calls += 1
+        return SimpleNamespace(content=self.content)
+
+
+class _FailingLLM:
+    def with_structured_output(self, schema: type) -> object:
+        raise RuntimeError("structured failure")
+
+    def invoke(self, messages: object) -> object:
+        raise RuntimeError("plain failure")
+
+
+def _install_company_llm(monkeypatch, llm: object, captured: dict | None = None) -> None:
+    def fake_get_agent_llm(name: str) -> object:
+        if captured is not None:
+            captured["agent_name"] = name
+        return llm
+
+    monkeypatch.setattr(company_module, "get_agent_llm", fake_get_agent_llm, raising=False)
+
+
+def test_company_agent_uses_shared_llm_and_preloaded_data(monkeypatch):
+    captured: dict = {}
+    _install_company_llm(
+        monkeypatch,
+        _StructuredLLM(_valid_company_payload(), captured),
+        captured,
+    )
+
+    def unexpected_tool_call(*args, **kwargs):
+        raise AssertionError("preloaded company_data must take precedence")
+
+    monkeypatch.setattr(company_module, "get_company_profile", unexpected_tool_call)
+
+    result = company_module.company_agent_node(
+        _company_state(company_data=_company_evidence())
+    )
+
+    assert captured["agent_name"] == "company"
+    assert captured["schema"] is CompanyAnalysis
+    assert result["company_profile"]["status"] == "success"
+    assert result["company_profile"]["ticker"] == "AAPL"
+    messages_text = str(captured["messages"])
+    assert "2026-07-15" in messages_text
+    assert "Evaluate durable company quality" in messages_text
+    assert "Apple designs devices and services" in messages_text
+
+
+def test_company_agent_uses_tool_when_preloaded_data_is_missing(monkeypatch):
+    captured: dict = {}
+    calls: dict = {}
+    _install_company_llm(
+        monkeypatch,
+        _StructuredLLM(_valid_company_payload(), captured),
+    )
+
+    def fake_profile(ticker: str, as_of_date: str | None = None) -> dict:
+        calls.update(ticker=ticker, as_of_date=as_of_date)
+        return _company_evidence()
+
+    monkeypatch.setattr(company_module, "get_company_profile", fake_profile)
+
+    result = company_module.company_agent_node(_company_state())
+
+    assert calls == {"ticker": "AAPL", "as_of_date": "2026-07-15"}
+    assert result["company_profile"]["company_name"] == "Apple Inc."
+
+
+@pytest.mark.parametrize("fenced", [False, True])
+def test_company_agent_falls_back_to_plain_json(monkeypatch, fenced):
+    llm = _PlainFallbackLLM(_valid_company_payload(), fenced=fenced)
+    _install_company_llm(monkeypatch, llm)
+
+    result = company_module.company_agent_node(
+        _company_state(company_data=_company_evidence())
+    )
+
+    assert result["company_profile"]["status"] == "success"
+    assert llm.plain_calls == 1
+
+
+def test_company_agent_returns_degraded_json_when_llm_fails(monkeypatch):
+    _install_company_llm(monkeypatch, _FailingLLM())
+
+    result = company_module.company_agent_node(
+        _company_state(company_data=_company_evidence())
+    )
+
+    profile = result["company_profile"]
+    assert profile["status"] == "degraded"
+    assert profile["confidence"] <= 0.3
+    assert profile["company_name"] == "Apple Inc."
+    assert profile["business_model"]["summary"] == "Apple designs devices and services."
+    assert profile["financial_health"]["assessment"] == "insufficient_evidence"
+    assert profile["growth"]["assessment"] == "insufficient_evidence"
+    assert profile["warnings"]
+    assert result["shared_memory_refs"] == [
+        {"agent": "company_agent", "key": "company_profile"}
+    ]
+    audit = result["audit_log"][0]
+    assert audit["agent"] == "company_agent"
+    assert "api_key" not in audit["llm"]
+    assert "MAF_LLM_API_KEY" not in json.dumps(audit)
