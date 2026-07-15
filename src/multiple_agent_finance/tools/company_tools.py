@@ -81,6 +81,12 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
         sector = info.get("sector") or "unknown"
         industry = info.get("industry") or "unknown"
         market_cap = _safe_float(info.get("marketCap"))
+        warnings = []
+        if as_of_date:
+            warnings.append(
+                "yfinance company profile is a current snapshot and is not "
+                f"point-in-time verified for {as_of_date}"
+            )
 
         return {
             "ticker": normalized,
@@ -108,11 +114,9 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
             "growth_evidence": {
                 "revenue_growth": _safe_float(info.get("revenueGrowth")),
                 "earnings_growth": _safe_float(info.get("earningsGrowth")),
-                "earnings_quarterly_growth": _safe_float(
-                    info.get("earningsQuarterlyGrowth")
-                ),
+                "earnings_quarterly_growth": _safe_float(info.get("earningsQuarterlyGrowth")),
             },
-            "warnings": [],
+            "warnings": warnings,
             "sources": [{"type": "company_profile", "name": "yfinance"}],
         }
     except Exception as exc:

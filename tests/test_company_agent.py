@@ -83,9 +83,7 @@ def test_company_analysis_schema_serializes_six_dimensions():
 
     payload = analysis.model_dump(mode="json")
 
-    assert payload["business_model"]["summary"] == (
-        "Consumer hardware and services ecosystem."
-    )
+    assert payload["business_model"]["summary"] == ("Consumer hardware and services ecosystem.")
     assert payload["industry_position"]["position"] == "Global category leader."
     assert payload["competitive_advantages"][0]["durability"] == "high"
     assert payload["financial_health"]["assessment"] == "healthy"
@@ -169,6 +167,10 @@ def test_get_company_profile_returns_normalized_company_evidence(monkeypatch):
     assert result["growth_evidence"]["revenue_growth"] == 0.08
     assert result["competitive_evidence"]["enterprise_value"] == 3_100_000_000_000.0
     assert result["sources"] == [{"type": "company_profile", "name": "yfinance"}]
+    assert result["warnings"] == [
+        "yfinance company profile is a current snapshot and is not "
+        "point-in-time verified for 2026-07-15"
+    ]
 
 
 def test_get_company_profile_returns_stable_fallback(monkeypatch):
@@ -299,9 +301,7 @@ def test_company_agent_uses_shared_llm_and_preloaded_data(monkeypatch):
 
     monkeypatch.setattr(company_module, "get_company_profile", unexpected_tool_call)
 
-    result = company_module.company_agent_node(
-        _company_state(company_data=_company_evidence())
-    )
+    result = company_module.company_agent_node(_company_state(company_data=_company_evidence()))
 
     assert captured["agent_name"] == "company"
     assert captured["schema"] is CompanyAnalysis
@@ -338,9 +338,7 @@ def test_company_agent_falls_back_to_plain_json(monkeypatch, fenced):
     llm = _PlainFallbackLLM(_valid_company_payload(), fenced=fenced)
     _install_company_llm(monkeypatch, llm)
 
-    result = company_module.company_agent_node(
-        _company_state(company_data=_company_evidence())
-    )
+    result = company_module.company_agent_node(_company_state(company_data=_company_evidence()))
 
     assert result["company_profile"]["status"] == "success"
     assert llm.plain_calls == 1
@@ -349,9 +347,7 @@ def test_company_agent_falls_back_to_plain_json(monkeypatch, fenced):
 def test_company_agent_returns_degraded_json_when_llm_fails(monkeypatch):
     _install_company_llm(monkeypatch, _FailingLLM())
 
-    result = company_module.company_agent_node(
-        _company_state(company_data=_company_evidence())
-    )
+    result = company_module.company_agent_node(_company_state(company_data=_company_evidence()))
 
     profile = result["company_profile"]
     assert profile["status"] == "degraded"
@@ -361,9 +357,7 @@ def test_company_agent_returns_degraded_json_when_llm_fails(monkeypatch):
     assert profile["financial_health"]["assessment"] == "insufficient_evidence"
     assert profile["growth"]["assessment"] == "insufficient_evidence"
     assert profile["warnings"]
-    assert result["shared_memory_refs"] == [
-        {"agent": "company_agent", "key": "company_profile"}
-    ]
+    assert result["shared_memory_refs"] == [{"agent": "company_agent", "key": "company_profile"}]
     audit = result["audit_log"][0]
     assert audit["agent"] == "company_agent"
     assert "api_key" not in audit["llm"]

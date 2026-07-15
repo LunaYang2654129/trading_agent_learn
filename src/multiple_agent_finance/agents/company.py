@@ -110,9 +110,7 @@ def _build_degraded_analysis(
     if not warnings:
         warnings = ["Company analysis evidence is incomplete."]
 
-    business_summary = str(
-        evidence.get("business_summary") or "insufficient_evidence"
-    )
+    business_summary = str(evidence.get("business_summary") or "insufficient_evidence")
     sector = str(evidence.get("sector") or "unknown")
     industry = str(evidence.get("industry") or "unknown")
     company_name = str(evidence.get("company_name") or ticker)
@@ -153,9 +151,7 @@ def _build_degraded_analysis(
             "constraints": [],
             "evidence": _evidence_lines(growth_evidence),
         },
-        risk_factors=[
-            {"risk": risk_message, "severity": "unknown", "evidence": warnings[0]}
-        ],
+        risk_factors=[{"risk": risk_message, "severity": "unknown", "evidence": warnings[0]}],
         confidence=0.2 if evidence else 0.05,
         warnings=warnings,
         sources=list(evidence.get("sources", [])),
