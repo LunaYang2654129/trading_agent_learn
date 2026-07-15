@@ -10,6 +10,8 @@ from pydantic import ValidationError
 
 from multiple_agent_finance.agents import company as company_module
 from multiple_agent_finance.agents.company_schema import CompanyAnalysis
+from multiple_agent_finance.graph import company_technical_parallel as parallel_module
+from multiple_agent_finance.graph.state import StockAnalysisState
 from multiple_agent_finance.tools.company_tools import get_company_profile
 
 
@@ -366,3 +368,92 @@ def test_company_agent_returns_degraded_json_when_llm_fails(monkeypatch):
     assert audit["agent"] == "company_agent"
     assert "api_key" not in audit["llm"]
     assert "MAF_LLM_API_KEY" not in json.dumps(audit)
+
+
+def _parallel_state() -> dict:
+    return {
+        "ticker": "AAPL",
+        "as_of_date": "2026-07-15",
+        "user_request": "Analyze technical and company evidence.",
+        "planner_tasks": {},
+        "market_data": {"records": []},
+        "company_data": _company_evidence(),
+        "shared_memory_refs": [],
+        "knowledge_base_refs": [],
+        "external_data_refs": [],
+        "audit_log": [],
+    }
+
+
+def _install_graph_fakes(monkeypatch, *, degraded_company: bool = False) -> None:
+    def fake_planner(state: dict) -> dict:
+        return {
+            "ticker": state["ticker"].upper(),
+            "planner_tasks": {
+                "technical": "Analyze technical evidence.",
+                "company": "Analyze company evidence.",
+            },
+        }
+
+    def fake_technical(state: dict) -> dict:
+        return {
+            "technical_indicators": {
+                "trend": "bullish",
+                "warnings": ["technical warning"] if degraded_company else [],
+            }
+        }
+
+    def fake_company(state: dict) -> dict:
+        profile = _valid_company_payload()
+        if degraded_company:
+            profile["status"] = "degraded"
+            profile["warnings"] = ["company warning"]
+        return {"company_profile": profile}
+
+    monkeypatch.setattr(parallel_module, "planner_agent_node", fake_planner)
+    monkeypatch.setattr(parallel_module, "technical_agent_node", fake_technical)
+    monkeypatch.setattr(parallel_module, "company_agent_node", fake_company)
+
+
+def test_parallel_state_declares_company_inputs_and_joined_output():
+    assert "company_data" in StockAnalysisState.__annotations__
+    assert "parallel_analysis_result" in StockAnalysisState.__annotations__
+
+
+def test_company_technical_parallel_graph_has_expected_nodes():
+    graph = parallel_module.build_company_technical_parallel_graph()
+
+    assert set(graph.get_graph().nodes) == {
+        "__start__",
+        "planner",
+        "technical_agent",
+        "company_agent",
+        "result_collector",
+        "__end__",
+    }
+
+
+def test_company_technical_parallel_graph_collects_both_results(monkeypatch):
+    _install_graph_fakes(monkeypatch)
+    graph = parallel_module.build_company_technical_parallel_graph()
+
+    result = graph.invoke(_parallel_state())
+
+    joined = result["parallel_analysis_result"]
+    assert joined["ticker"] == "AAPL"
+    assert joined["as_of_date"] == "2026-07-15"
+    assert joined["technical_result"] == {"trend": "bullish", "warnings": []}
+    assert joined["company_result"]["status"] == "success"
+    assert joined["warnings"] == []
+
+
+def test_parallel_graph_preserves_technical_result_when_company_is_degraded(monkeypatch):
+    _install_graph_fakes(monkeypatch, degraded_company=True)
+    graph = parallel_module.build_company_technical_parallel_graph()
+
+    result = graph.invoke(_parallel_state())
+
+    joined = result["parallel_analysis_result"]
+    assert joined["technical_result"]["trend"] == "bullish"
+    assert joined["company_result"]["status"] == "degraded"
+    assert joined["warnings"] == ["technical warning", "company warning"]
