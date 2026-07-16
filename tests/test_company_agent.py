@@ -271,6 +271,21 @@ class _PlainFallbackLLM:
         return SimpleNamespace(content=self.content)
 
 
+class _JsonObjectFallbackLLM(_PlainFallbackLLM):
+    def __init__(self, payload: dict) -> None:
+        super().__init__(payload)
+        self.response_format = None
+        self.fallback_messages = None
+
+    def bind(self, **kwargs) -> "_JsonObjectFallbackLLM":
+        self.response_format = kwargs.get("response_format")
+        return self
+
+    def invoke(self, messages: object) -> object:
+        self.fallback_messages = messages
+        return super().invoke(messages)
+
+
 class _FailingLLM:
     def with_structured_output(self, schema: type) -> object:
         raise RuntimeError("structured failure")
@@ -342,6 +357,20 @@ def test_company_agent_falls_back_to_plain_json(monkeypatch, fenced):
 
     assert result["company_profile"]["status"] == "success"
     assert llm.plain_calls == 1
+
+
+def test_company_agent_requests_json_object_with_explicit_schema_on_fallback(monkeypatch):
+    llm = _JsonObjectFallbackLLM(_valid_company_payload())
+    _install_company_llm(monkeypatch, llm)
+
+    result = company_module.company_agent_node(_company_state(company_data=_company_evidence()))
+
+    assert result["company_profile"]["status"] == "success"
+    assert llm.response_format == {"type": "json_object"}
+    fallback_text = str(llm.fallback_messages)
+    assert '"business_model"' in fallback_text
+    assert '"competitive_advantages"' in fallback_text
+    assert '"risk_factors"' in fallback_text
 
 
 def test_company_agent_returns_degraded_json_when_llm_fails(monkeypatch):

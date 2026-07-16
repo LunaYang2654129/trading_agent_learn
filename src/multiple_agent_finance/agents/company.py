@@ -43,6 +43,21 @@ def _build_messages(state: StockAnalysisState, evidence: dict[str, Any]) -> list
     ]
 
 
+def _build_plain_fallback_messages(messages: list[Any]) -> list[Any]:
+    schema = CompanyAnalysis.model_json_schema()
+    return [
+        *messages,
+        HumanMessage(
+            content=(
+                "The provider does not support JSON Schema response formatting. "
+                "Return one JSON object that validates against this exact JSON Schema. "
+                "Preserve every required field name and value type:\n"
+                + json.dumps(schema, ensure_ascii=False, indent=2)
+            )
+        ),
+    ]
+
+
 def _extract_message_content(response: Any) -> str:
     content = getattr(response, "content", response)
     if isinstance(content, str):
@@ -193,7 +208,10 @@ def _invoke_company_model(
         errors.append(exc)
 
     try:
-        response = llm.invoke(messages)
+        fallback_messages = _build_plain_fallback_messages(messages)
+        bind = getattr(llm, "bind", None)
+        fallback_llm = bind(response_format={"type": "json_object"}) if callable(bind) else llm
+        response = fallback_llm.invoke(fallback_messages)
         raw_json = _parse_json_object(_extract_message_content(response))
         return _validated_result(raw_json, ticker=ticker, as_of_date=as_of_date)
     except Exception as exc:
