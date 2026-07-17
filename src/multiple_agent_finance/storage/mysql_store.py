@@ -199,6 +199,7 @@ class DatabaseStore:
             ("news_agent", "news_sentiment", state.get("news_sentiment", {})),
             ("technical_agent", "technical_indicators", state.get("technical_indicators", {})),
             ("decision_agent", "decision_summary", state.get("decision_summary", {})),
+            ("backtest_agent", "backtest_result", state.get("backtest_result", {})),
             ("reflection_agent", "reflection_result", state.get("reflection_result", {})),
         ]
         for agent_name, output_type, payload in sections:

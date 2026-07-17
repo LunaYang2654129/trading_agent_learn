@@ -150,10 +150,84 @@ def test_reflection_returns_actionable_retry_task_for_missing_technical():
     assert result["retry_count"] == 1
 
 
-def test_end_to_end_graph_runs_weekly_technical_link(tmp_path, monkeypatch):
+def test_end_to_end_full_graph_runs_parallel_specialists(tmp_path, monkeypatch):
     from multiple_agent_finance.config.settings import settings
+    import multiple_agent_finance.agents.backtest as backtest_agent
+    import multiple_agent_finance.agents.company as company_agent
+    import multiple_agent_finance.agents.financial as financial_agent
+    import multiple_agent_finance.agents.news as news_agent
 
     monkeypatch.setattr(settings, "report_dir", tmp_path)
+    monkeypatch.setattr(
+        backtest_agent,
+        "get_six_month_forward_return_backtest",
+        lambda ticker, as_of_date=None, market_data=None: {
+            "ticker": ticker,
+            "method": "six_month_forward_return_event_study",
+            "window": {"start_date": "2025-07-01", "end_date": "2026-01-01", "bar_count": 120},
+            "metrics": {
+                "1d": {"count": 1, "mean": 0.01, "median": 0.01, "min": 0.01, "max": 0.01, "win_rate": 1.0, "latest_return": 0.01},
+                "5d": {"count": 1, "mean": 0.02, "median": 0.02, "min": 0.02, "max": 0.02, "win_rate": 1.0, "latest_return": 0.02},
+                "10d": {"count": 1, "mean": 0.03, "median": 0.03, "min": 0.03, "max": 0.03, "win_rate": 1.0, "latest_return": 0.03},
+            },
+            "rows": [],
+            "warnings": [],
+            "sources": [{"type": "test", "name": "fixture"}],
+        },
+    )
+    monkeypatch.setattr(
+        company_agent,
+        "get_company_profile",
+        lambda ticker, as_of_date=None: {
+            "ticker": ticker,
+            "as_of_date": as_of_date,
+            "company_name": "Apple Inc.",
+            "industry": "Consumer Electronics",
+            "sector": "Technology",
+            "main_products": ["iPhone"],
+            "competitive_position": "strong",
+            "key_risks": [],
+            "warnings": [],
+            "sources": [{"type": "test", "name": "fixture"}],
+        },
+    )
+    monkeypatch.setattr(
+        financial_agent,
+        "get_financial_metrics",
+        lambda ticker: {
+            "ticker": ticker,
+            "revenue": 100,
+            "net_income": 20,
+            "roe": 0.2,
+            "debt_to_asset": 0.3,
+            "gross_margin": 0.4,
+            "operating_cashflow": 25,
+            "cash_flow_quality": 1.25,
+            "financial_summary": "ok",
+            "financial_risks": [],
+            "quarterly_metrics": {"quarters": ["2026-03-31"]},
+            "warnings": [],
+            "sources": [{"type": "test", "name": "fixture"}],
+        },
+    )
+    monkeypatch.setattr(
+        news_agent,
+        "get_news_analysis",
+        lambda ticker, as_of_date=None: {
+            "ticker": ticker,
+            "as_of_date": as_of_date,
+            "items": [{"title": "Apple growth outlook", "sentiment": "positive", "labels": ["positive"]}],
+            "positive_items": [{"title": "Apple growth outlook"}],
+            "negative_items": [],
+            "policy_items": [],
+            "broker_research_items": [],
+            "sentiment_score": 1.0,
+            "summary": "positive",
+            "coverage": {"days_with_results": 1, "items": 1},
+            "warnings": [],
+            "sources": [{"type": "test", "name": "fixture"}],
+        },
+    )
 
     result = build_graph().invoke(
         {
@@ -163,7 +237,7 @@ def test_end_to_end_graph_runs_weekly_technical_link(tmp_path, monkeypatch):
             "retry_count": 0,
             "max_retries": 1,
             "confidence_threshold": 0.75,
-            "chain_mode": "technical",
+            "chain_mode": "full",
             "market_data": _market_data(),
             "shared_memory_refs": [],
             "knowledge_base_refs": [],
@@ -172,19 +246,41 @@ def test_end_to_end_graph_runs_weekly_technical_link(tmp_path, monkeypatch):
         }
     )
 
-    assert "company_profile" not in result
-    assert "financial_metrics" not in result
-    assert "news_sentiment" not in result
+    assert result["company_profile"]
+    assert result["financial_metrics"]
+    assert result["news_sentiment"]
     assert result["technical_indicators"]
     assert result["decision_summary"]
+    assert result["decision_summary"]["chain_mode"] == "full"
+    assert result["backtest_result"]["metrics"]["1d"]["mean"] == 0.01
     assert result["reflection_result"]
     assert result["final_report_path"]
+    assert result["audit_report_path"]
 
 
 def test_technical_single_link_graph_runs_from_preloaded_data(monkeypatch, tmp_path):
     from multiple_agent_finance.config.settings import settings
+    import multiple_agent_finance.agents.backtest as backtest_agent
 
     monkeypatch.setattr(settings, "report_dir", tmp_path)
+    monkeypatch.setattr(
+        backtest_agent,
+        "get_six_month_forward_return_backtest",
+        lambda ticker, as_of_date=None, market_data=None, lookback_days=183, horizons=(1, 5, 10): {
+            "ticker": ticker,
+            "method": f"{lookback_days}_day_forward_return_event_study",
+            "window": {"start_date": "2025-07-01", "end_date": "2025-12-01", "bar_count": 100},
+            "horizons": list(horizons),
+            "metrics": {
+                "1d": {"count": 1, "mean": 0.01, "median": 0.01, "min": 0.01, "max": 0.01, "win_rate": 1.0, "latest_return": 0.01},
+                "3d": {"count": 1, "mean": 0.02, "median": 0.02, "min": 0.02, "max": 0.02, "win_rate": 1.0, "latest_return": 0.02},
+                "5d": {"count": 1, "mean": 0.03, "median": 0.03, "min": 0.03, "max": 0.03, "win_rate": 1.0, "latest_return": 0.03},
+            },
+            "rows": [],
+            "warnings": [],
+            "sources": [{"type": "test", "name": "fixture"}],
+        },
+    )
 
     result = build_technical_chain_graph().invoke(
         {
@@ -197,6 +293,8 @@ def test_technical_single_link_graph_runs_from_preloaded_data(monkeypatch, tmp_p
             "chain_mode": "technical",
             "market_period": "1y",
             "persist_data": False,
+            "backtest_horizons": [1, 3, 5],
+            "backtest_lookback_days": 14,
             "market_data": _market_data(),
             "shared_memory_refs": [],
             "knowledge_base_refs": [],
@@ -209,5 +307,9 @@ def test_technical_single_link_graph_runs_from_preloaded_data(monkeypatch, tmp_p
     assert result["planner_tasks"]["technical"]
     assert result["technical_indicators"]["trend"] == "bullish"
     assert result["decision_summary"]["chain_mode"] == "technical"
+    assert result["backtest_result"]["method"] == "14_day_forward_return_event_study"
+    assert result["backtest_result"]["horizons"] == [1, 3, 5]
+    assert result["backtest_result"]["metrics"]["5d"]["mean"] == 0.03
     assert result["reflection_result"]["chain_mode"] == "technical"
     assert result["final_report_path"]
+    assert result["audit_report_path"]

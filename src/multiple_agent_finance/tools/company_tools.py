@@ -70,6 +70,17 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
 
     normalized = ticker.upper()
     try:
+        from multiple_agent_finance.tools.local_data_tools import load_latest_company_profile
+
+        local_profile = load_latest_company_profile(normalized)
+        if local_profile:
+            return local_profile
+    except Exception as exc:
+        local_warning = f"Local company profile unavailable: {exc}"
+    else:
+        local_warning = "Local company profile not found."
+
+    try:
         import yfinance as yf
 
         info = yf.Ticker(normalized).get_info()
@@ -87,6 +98,13 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
                 "yfinance company profile is a current snapshot and is not "
                 f"point-in-time verified for {as_of_date}"
             )
+        risks = []
+        if info.get("trailingPE") and info.get("trailingPE", 0) > 60:
+            risks.append("估值倍数偏高，需要结合成长性验证。")
+        if info.get("debtToEquity") and info.get("debtToEquity", 0) > 150:
+            risks.append("债务权益比偏高，需要关注偿债压力。")
+        if not risks:
+            risks.append("公司层面风险需要结合行业资料和财报进一步验证。")
 
         return {
             "ticker": normalized,
@@ -98,6 +116,8 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
             "main_products": _extract_products(summary),
             "website": info.get("website"),
             "market_cap": market_cap,
+            "competitive_position": f"{company_name} 位于 {sector}/{industry}，需结合市场份额和同业估值进一步比较。",
+            "shareholder_structure": "股权结构需接入交易所、年报或专业数据库后补全。",
             "competitive_evidence": {
                 "market_cap": market_cap,
                 "enterprise_value": _safe_float(info.get("enterpriseValue")),
@@ -116,6 +136,7 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
                 "earnings_growth": _safe_float(info.get("earningsGrowth")),
                 "earnings_quarterly_growth": _safe_float(info.get("earningsQuarterlyGrowth")),
             },
+            "key_risks": risks,
             "warnings": warnings,
             "sources": [{"type": "company_profile", "name": "yfinance"}],
         }
@@ -130,12 +151,15 @@ def get_company_profile(ticker: str, as_of_date: str | None = None) -> dict[str,
             "main_products": [],
             "website": None,
             "market_cap": None,
+            "competitive_position": "公司竞争地位待接入真实数据源验证。",
+            "shareholder_structure": "股权结构待接入交易所、年报或专业数据库。",
             "competitive_evidence": {
                 "market_cap": None,
                 "enterprise_value": None,
             },
             "financial_evidence": _empty_financial_evidence(),
             "growth_evidence": _empty_growth_evidence(),
+            "key_risks": ["公司资料源暂不可用，结论需保守处理。"],
             "warnings": [f"公司资料获取失败: {exc}"],
             "sources": [{"type": "fallback", "name": "company_profile_unavailable"}],
         }

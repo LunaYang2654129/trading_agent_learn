@@ -208,6 +208,7 @@ def _build_evidence_snapshot(state: StockAnalysisState) -> dict[str, Any]:
         "financial_metrics": state.get("financial_metrics", {}),
         "news_sentiment": state.get("news_sentiment", {}),
         "technical_indicators": state.get("technical_indicators", {}),
+        "backtest_result": state.get("backtest_result", {}),
         "market_data_summary": {
             "ticker": market_data.get("ticker"),
             "period": market_data.get("period"),

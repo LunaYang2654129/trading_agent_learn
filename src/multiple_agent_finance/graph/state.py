@@ -17,6 +17,8 @@ class StockAnalysisState(TypedDict, total=False):
     chain_mode: Literal["full", "technical"]
     market_period: str
     persist_data: bool
+    backtest_horizons: list[int]
+    backtest_lookback_days: int
 
     # Data collection and ingestion.
     market_data: dict[str, Any]
@@ -30,6 +32,7 @@ class StockAnalysisState(TypedDict, total=False):
     news_sentiment: dict[str, Any]
     technical_indicators: dict[str, Any]
     parallel_analysis_result: dict[str, Any]
+    backtest_result: dict[str, Any]
 
     # Shared memory / knowledge base references.
     shared_memory_refs: Annotated[list[dict[str, Any]], add]
@@ -45,4 +48,5 @@ class StockAnalysisState(TypedDict, total=False):
     # Final output and audit.
     final_report: str
     final_report_path: str
+    audit_report_path: str
     audit_log: Annotated[list[dict[str, Any]], add]
