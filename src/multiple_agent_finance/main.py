@@ -34,6 +34,8 @@ def _base_state(
     chain_mode: Literal["full", "technical"],
     market_period: str = "1y",
     persist_data: bool = False,
+    backtest_horizons: tuple[int, ...] | None = None,
+    backtest_lookback_days: int | None = None,
     market_data: dict[str, Any] | None = None,
     data_ingestion_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -52,6 +54,10 @@ def _base_state(
         "external_data_refs": [],
         "audit_log": [],
     }
+    if backtest_horizons is not None:
+        state["backtest_horizons"] = list(backtest_horizons)
+    if backtest_lookback_days is not None:
+        state["backtest_lookback_days"] = backtest_lookback_days
     if market_data is not None:
         state["market_data"] = market_data
         state["data_ingestion_result"] = data_ingestion_result or {
@@ -81,6 +87,30 @@ def _int_or_none(value: Any) -> int | None:
         return int(float(value))
     except (TypeError, ValueError):
         return None
+
+
+def parse_backtest_horizons(value: str | None) -> tuple[int, ...] | None:
+    """Parse a comma-separated horizon list such as ``1,3,5``."""
+
+    if value in (None, ""):
+        return None
+    horizons: list[int] = []
+    for raw_item in value.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+        try:
+            horizon = int(item)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(
+                "backtest horizons must be comma-separated positive integers"
+            ) from exc
+        if horizon <= 0:
+            raise argparse.ArgumentTypeError("backtest horizons must be positive integers")
+        horizons.append(horizon)
+    if not horizons:
+        raise argparse.ArgumentTypeError("at least one backtest horizon is required")
+    return tuple(horizons)
 
 
 def load_market_data_csv(
@@ -131,6 +161,8 @@ def run_analysis(
     as_of_date: str | None = None,
     confidence_threshold: float = 0.75,
     max_retries: int = 1,
+    backtest_horizons: tuple[int, ...] | None = None,
+    backtest_lookback_days: int | None = None,
 ) -> dict[str, Any]:
     """Run the full LangGraph workflow and return the final state."""
 
@@ -143,6 +175,8 @@ def run_analysis(
             confidence_threshold=confidence_threshold,
             max_retries=max_retries,
             chain_mode="full",
+            backtest_horizons=backtest_horizons,
+            backtest_lookback_days=backtest_lookback_days,
         )
     )
 
@@ -156,6 +190,8 @@ def run_technical_chain(
     max_retries: int = 1,
     market_period: str = "1y",
     persist_data: bool = False,
+    backtest_horizons: tuple[int, ...] | None = None,
+    backtest_lookback_days: int | None = None,
     market_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the weekly technical single-link workflow and return the final state."""
@@ -213,6 +249,8 @@ def run_technical_chain(
             chain_mode="technical",
             market_period=market_period,
             persist_data=persist_data,
+            backtest_horizons=backtest_horizons,
+            backtest_lookback_days=backtest_lookback_days,
             market_data=market_data,
             data_ingestion_result=data_ingestion_result,
         )
@@ -263,6 +301,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=int, default=1, help="Maximum reflection retries.")
     parser.add_argument("--market-period", default="1y", help="yfinance history period for technical chain.")
     parser.add_argument(
+        "--backtest-horizons",
+        type=parse_backtest_horizons,
+        default=None,
+        help="Comma-separated forward-return horizons, e.g. 1,3,5. Defaults to 1,5,10.",
+    )
+    parser.add_argument(
+        "--backtest-lookback-days",
+        type=int,
+        default=None,
+        help="Calendar-day lookback window for backtest metrics. Defaults to 183.",
+    )
+    parser.add_argument(
         "--market-data-csv",
         default=None,
         help="Pre-collected OHLCV CSV for the technical single-link graph.",
@@ -298,6 +348,8 @@ def main() -> None:
             max_retries=args.max_retries,
             market_period=args.market_period,
             persist_data=args.persist_data,
+            backtest_horizons=args.backtest_horizons,
+            backtest_lookback_days=args.backtest_lookback_days,
             market_data=market_data,
         )
     else:
@@ -307,6 +359,8 @@ def main() -> None:
             as_of_date=args.as_of_date,
             confidence_threshold=args.threshold,
             max_retries=args.max_retries,
+            backtest_horizons=args.backtest_horizons,
+            backtest_lookback_days=args.backtest_lookback_days,
         )
 
     database_error = None
@@ -325,6 +379,8 @@ def main() -> None:
 
     print(result["final_report"])
     print(f"\nReport saved: {result.get('final_report_path')}")
+    if result.get("audit_report_path"):
+        print(f"Audit report saved: {result.get('audit_report_path')}")
     if database_error:
         print(f"\n{database_error}", file=sys.stderr)
         raise SystemExit(1)

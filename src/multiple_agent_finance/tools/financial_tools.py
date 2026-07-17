@@ -21,10 +21,94 @@ def _ratio(numerator: float | None, denominator: float | None) -> float | None:
     return numerator / denominator
 
 
+def _metric(statement: dict[str, dict[str, float | None]], fiscal_date: str, *names: str) -> float | None:
+    values = statement.get(fiscal_date, {})
+    for name in names:
+        value = values.get(name)
+        if value is not None:
+            return float(value)
+    return None
+
+
+def _from_local_quarterly(ticker: str, quarterly: dict) -> dict:
+    quarters = list(quarterly.get("quarters", []))[:4]
+    statements = quarterly.get("statements", {})
+    income = statements.get("income_statement", {})
+    balance = statements.get("balance_sheet", {})
+    cash_flow = statements.get("cash_flow", {})
+    latest = quarters[0] if quarters else None
+
+    revenue = _metric(income, latest, "Total Revenue") if latest else None
+    net_income = _metric(income, latest, "Net Income") if latest else None
+    gross_profit = _metric(income, latest, "Gross Profit") if latest else None
+    total_assets = _metric(balance, latest, "Total Assets") if latest else None
+    total_liabilities = (
+        _metric(balance, latest, "Total Liabilities Net Minority Interest", "Total Liab")
+        if latest
+        else None
+    )
+    equity = (
+        _metric(balance, latest, "Stockholders Equity", "Total Stockholder Equity")
+        if latest
+        else None
+    )
+    operating_cashflow = (
+        _metric(cash_flow, latest, "Operating Cash Flow", "Total Cash From Operating Activities")
+        if latest
+        else None
+    )
+
+    gross_margin = _ratio(gross_profit, revenue)
+    roe = _ratio(net_income, equity)
+    debt_to_asset = _ratio(total_liabilities, total_assets)
+    cash_flow_quality_ratio = _ratio(operating_cashflow, net_income)
+
+    risks = []
+    if debt_to_asset is not None and debt_to_asset > 0.65:
+        risks.append("资产负债率偏高。")
+    if roe is not None and roe < 0:
+        risks.append("ROE 为负，盈利质量需要重点核查。")
+    if cash_flow_quality_ratio is not None and cash_flow_quality_ratio < 0.8:
+        risks.append("经营现金流对利润覆盖不足。")
+    if len(quarters) < 4:
+        risks.append("本地季度财务数据不足 4 个季度。")
+    if not risks:
+        risks.append("四季度财务风险未见明显异常，但仍需结合完整财报验证。")
+
+    return {
+        "ticker": ticker,
+        "revenue": revenue,
+        "net_income": net_income,
+        "roe": roe,
+        "debt_to_asset": debt_to_asset,
+        "gross_margin": gross_margin,
+        "operating_cashflow": operating_cashflow,
+        "cash_flow_quality": cash_flow_quality_ratio,
+        "financial_summary": (
+            f"已从本地四季度财务明细提取最近季度核心指标，覆盖 {len(quarters)} 个季度。"
+        ),
+        "financial_risks": risks,
+        "quarterly_metrics": quarterly,
+        "warnings": [],
+        "sources": quarterly.get("sources", [{"type": "financial_quarterly_metrics", "name": "local_mysql"}]),
+    }
+
+
 def get_financial_metrics(ticker: str) -> dict:
     """Fetch and normalize core financial metrics."""
 
     normalized = ticker.upper()
+    try:
+        from multiple_agent_finance.tools.local_data_tools import load_latest_quarterly_financials
+
+        quarterly = load_latest_quarterly_financials(normalized)
+        if quarterly:
+            return _from_local_quarterly(normalized, quarterly)
+    except Exception as exc:
+        local_warning = f"Local quarterly financials unavailable: {exc}"
+    else:
+        local_warning = "Local quarterly financials not found."
+
     try:
         import yfinance as yf
 
@@ -76,7 +160,8 @@ def get_financial_metrics(ticker: str) -> dict:
             "cash_flow_quality": cash_flow_quality_ratio,
             "financial_summary": "已从财务报表提取收入、利润、ROE、资产负债率和现金流质量。",
             "financial_risks": risks,
-            "warnings": [],
+            "quarterly_metrics": {},
+            "warnings": [local_warning],
             "sources": [{"type": "financial_statement", "name": "yfinance"}],
         }
     except Exception as exc:
@@ -91,6 +176,7 @@ def get_financial_metrics(ticker: str) -> dict:
             "cash_flow_quality": None,
             "financial_summary": "财务指标暂不可用，当前使用离线降级结果。",
             "financial_risks": ["财务数据源暂不可用，需补充年报或三方数据库。"],
-            "warnings": [f"财务数据获取失败: {exc}"],
+            "quarterly_metrics": {},
+            "warnings": [local_warning, f"财务数据获取失败: {exc}"],
             "sources": [{"type": "fallback", "name": "financial_metrics_unavailable"}],
         }
