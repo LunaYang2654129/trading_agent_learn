@@ -303,6 +303,29 @@ def _install_company_llm(monkeypatch, llm: object, captured: dict | None = None)
     monkeypatch.setattr(company_module, "get_agent_llm", fake_get_agent_llm, raising=False)
 
 
+def test_company_prompt_enforces_reliability_depth_and_token_contract():
+    prompt = company_module.PROMPT_PATH.read_text(encoding="utf-8")
+    lowered = prompt.lower()
+
+    for required in (
+        "`period_end`",
+        "`filed_at`",
+        "point-in-time",
+        "current snapshot",
+        "conflicting evidence",
+        "conservative",
+        "does not represent an investment probability",
+        "at most 5",
+        "at most 6",
+        "do not repeat",
+    ):
+        assert required.lower() in lowered
+
+    assert 'status="degraded"' in lowered
+    assert "insufficient_evidence" in lowered
+    assert "json only" in lowered
+
+
 def test_company_agent_uses_shared_llm_and_preloaded_data(monkeypatch):
     captured: dict = {}
     _install_company_llm(
