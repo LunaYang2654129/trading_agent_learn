@@ -20,6 +20,7 @@ class StockAnalysisState(TypedDict, total=False):
 
     # Data collection and ingestion.
     market_data: dict[str, Any]
+    company_data: dict[str, Any]
     data_ingestion_result: dict[str, Any]
 
     # Planner and specialist-agent outputs.
@@ -28,6 +29,7 @@ class StockAnalysisState(TypedDict, total=False):
     financial_metrics: dict[str, Any]
     news_sentiment: dict[str, Any]
     technical_indicators: dict[str, Any]
+    parallel_analysis_result: dict[str, Any]
 
     # Shared memory / knowledge base references.
     shared_memory_refs: Annotated[list[dict[str, Any]], add]
